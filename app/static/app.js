@@ -10,6 +10,19 @@ class TetrisApp {
         this.currentGame = null;
         this.debugMode = false; // Set to true to enable debug logging
         
+        // Colorful Tetris piece colors
+        this.tetrisPieceColors = [
+            '#FF0D72', // Hot pink
+            '#0DC2FF', // Cyan  
+            '#0DFF72', // Green
+            '#FFB70D', // Orange
+            '#B70DFF', // Purple
+            '#FF720D', // Red-orange
+            '#72FF0D', // Lime green
+            '#FF0D72', // Bright pink
+            '#0D72FF', // Blue
+        ];
+        
         this.initializeElements();
         this.setupEventListeners();
         this.checkHealth();
@@ -95,8 +108,14 @@ class TetrisApp {
             // Enable/disable training button
             this.elements.quickTrainBtn.disabled = !health.train_enabled;
             
+            // Show/hide training controls based on training status
+            const trainControlsElement = document.getElementById('trainControls');
             if (health.train_enabled) {
-                document.getElementById('trainControls').style.display = 'block';
+                console.log('Training enabled - showing controls');
+                trainControlsElement.style.display = 'block';
+            } else {
+                console.log('Training disabled - hiding controls');
+                trainControlsElement.style.display = 'none';
             }
             
             this.log('System health check completed', 'success');
@@ -630,11 +649,57 @@ class TetrisApp {
             this.ctx.imageSmoothingEnabled = false; // Pixel-perfect scaling
             this.ctx.drawImage(img, 0, 0, this.canvas.width, this.canvas.height);
             
+            // Add colorful overlay effect to the PNG - analyze pixels and recolor them
+            this.colorizeCanvas();
+            
             // Draw grid overlay
             this.drawGrid();
         };
         
         img.src = 'data:image/png;base64,' + pngData;
+    }
+    
+    colorizeCanvas() {
+        // Get current image data
+        const imageData = this.ctx.getImageData(0, 0, this.canvas.width, this.canvas.height);
+        const data = imageData.data;
+        
+        // Loop through pixels and colorize non-black pixels
+        for (let i = 0; i < data.length; i += 4) {
+            const r = data[i];
+            const g = data[i + 1]; 
+            const b = data[i + 2];
+            const a = data[i + 3];
+            
+            // If pixel is not black/transparent
+            if (r > 30 || g > 30 || b > 30) {
+                // Calculate position in grid
+                const pixelIndex = i / 4;
+                const x = pixelIndex % this.canvas.width;
+                const y = Math.floor(pixelIndex / this.canvas.width);
+                const gridX = Math.floor(x / (this.canvas.width / 10));
+                const gridY = Math.floor(y / (this.canvas.height / 20));
+                
+                // Select color based on grid position
+                const colorIndex = (gridX + gridY * 2) % this.tetrisPieceColors.length;
+                const color = this.tetrisPieceColors[colorIndex];
+                
+                // Convert hex color to RGB
+                const hexColor = color.substring(1);
+                const colorR = parseInt(hexColor.substr(0, 2), 16);
+                const colorG = parseInt(hexColor.substr(2, 2), 16);
+                const colorB = parseInt(hexColor.substr(4, 2), 16);
+                
+                // Apply the color
+                data[i] = colorR;
+                data[i + 1] = colorG;
+                data[i + 2] = colorB;
+                data[i + 3] = 255; // Full opacity
+            }
+        }
+        
+        // Put the modified image data back
+        this.ctx.putImageData(imageData, 0, 0);
     }
     
     renderJsonFrame(frameData) {
@@ -661,10 +726,26 @@ class TetrisApp {
                     const [r, g, b] = pixel;
                     if (r > 0 || g > 0 || b > 0) {
                         if (r === 128 && g === 128 && b === 128) {
-                            this.ctx.fillStyle = '#888'; // Current piece (gray)
+                            // Current piece - use a bright color
+                            this.ctx.fillStyle = this.tetrisPieceColors[0];
                         } else {
-                            this.ctx.fillStyle = '#fff'; // Placed pieces (white)
+                            // Placed pieces - use different colors based on position for variety
+                            const colorIndex = (row + col) % this.tetrisPieceColors.length;
+                            this.ctx.fillStyle = this.tetrisPieceColors[colorIndex];
                         }
+                        
+                        // Draw the piece with a nice border effect
+                        this.ctx.fillRect(col * cellWidth + 1, row * cellHeight + 1, 
+                                         cellWidth - 2, cellHeight - 2);
+                        
+                        // Add a subtle gradient effect for 3D appearance
+                        const gradient = this.ctx.createLinearGradient(
+                            col * cellWidth + 1, row * cellHeight + 1, 
+                            col * cellWidth + cellWidth - 1, row * cellHeight + cellHeight - 1
+                        );
+                        gradient.addColorStop(0, 'rgba(255, 255, 255, 0.4)');
+                        gradient.addColorStop(1, 'rgba(0, 0, 0, 0.2)');
+                        this.ctx.fillStyle = gradient;
                         this.ctx.fillRect(col * cellWidth + 1, row * cellHeight + 1, 
                                          cellWidth - 2, cellHeight - 2);
                     }
@@ -698,8 +779,6 @@ class TetrisApp {
         console.log('Game stats:', { currentScore, currentLines, currentSteps }); // Debug log
         
         // Create a more realistic board state based on lines cleared
-        this.ctx.fillStyle = '#fff';
-        
         // Fill bottom rows based on lines cleared and score
         const baseFillRows = Math.min(Math.floor(currentLines * 0.3), 12);
         
@@ -708,6 +787,9 @@ class TetrisApp {
             const fillDensity = 0.4 + Math.random() * 0.4; // 40-80% filled
             for (let col = 0; col < 10; col++) {
                 if (Math.random() < fillDensity) {
+                    // Use colorful pieces
+                    const colorIndex = (row + col) % this.tetrisPieceColors.length;
+                    this.ctx.fillStyle = this.tetrisPieceColors[colorIndex];
                     this.ctx.fillRect(col * cellWidth + 1, row * cellHeight + 1, 
                                      cellWidth - 2, cellHeight - 2);
                 }
@@ -720,6 +802,9 @@ class TetrisApp {
             for (let i = 0; i < scatteredPieces; i++) {
                 const row = Math.floor(Math.random() * 10) + 5; // Middle area
                 const col = Math.floor(Math.random() * 10);
+                // Use colorful pieces
+                const colorIndex = (row + col + i) % this.tetrisPieceColors.length;
+                this.ctx.fillStyle = this.tetrisPieceColors[colorIndex];
                 this.ctx.fillRect(col * cellWidth + 1, row * cellHeight + 1, 
                                  cellWidth - 2, cellHeight - 2);
             }

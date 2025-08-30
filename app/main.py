@@ -271,9 +271,9 @@ async def websocket_stream(websocket: WebSocket, episodes: int = 1, seed: Option
             frame = env.render(mode="rgb_array")
             frame_data = StreamFrame(
                 frame=frame_to_base64(frame),
-                lines=env.lines_cleared,
+                lines=int(env.lines_cleared),
                 score=float(env.score),
-                step=step_count
+                step=int(step_count)
             )
             await websocket.send_json({
                 **frame_data.model_dump(),
@@ -301,10 +301,10 @@ async def websocket_stream(websocket: WebSocket, episodes: int = 1, seed: Option
                 frame = env.render(mode="rgb_array")
                 frame_data = StreamFrame(
                     frame=frame_to_base64(frame),
-                    lines=env.lines_cleared,
+                    lines=int(env.lines_cleared),
                     score=float(env.score),
-                    step=step_count,
-                    done=env.game_over
+                    step=int(step_count),
+                    done=bool(env.game_over)
                 )
                 await websocket.send_json({
                     **frame_data.model_dump(),
@@ -352,20 +352,22 @@ async def websocket_stream(websocket: WebSocket, episodes: int = 1, seed: Option
 @app.websocket("/ws/play-once")
 async def websocket_play_once(websocket: WebSocket, seed: Optional[int] = None, algo: str = "cem"):
     """WebSocket endpoint for single episode gameplay with step-by-step visualization."""
-    await websocket.accept()
-    
-    if policy_weights is None:
-        await websocket.send_json({"error": "No policy loaded"})
-        await websocket.close()
-        return
-    
     try:
+        await websocket.accept()
+        print(f"Play Once WebSocket accepted: seed={seed}, algo={algo}")
+        
+        if policy_weights is None:
+            await websocket.send_json({"error": "No policy loaded"})
+            await websocket.close()
+            return
+
         # Create environment
         env = TetrisEnv()
         
         # Use provided seed or generate random one
         episode_seed = seed if seed is not None else rng.integers(0, 1000000)
         env.reset(seed=episode_seed)
+        print(f"Environment created and reset with seed: {episode_seed}")
         
         step_count = 0
         max_steps = 1000  # Higher limit for single episode
@@ -374,16 +376,17 @@ async def websocket_play_once(websocket: WebSocket, seed: Optional[int] = None, 
         frame = env.render(mode="rgb_array")
         frame_data = StreamFrame(
             frame=frame_to_base64(frame),
-            lines=env.lines_cleared,
+            lines=int(env.lines_cleared),
             score=float(env.score),
-            step=step_count
+            step=int(step_count)
         )
         await websocket.send_json({
             **frame_data.model_dump(),
             "algorithm": algo,
-            "seed": episode_seed,
+            "seed": int(episode_seed),
             "mode": "play-once"
         })
+        print(f"Initial frame sent")
         
         while not env.game_over and step_count < max_steps:
             # Slightly slower than stream for better visualization 
@@ -396,41 +399,47 @@ async def websocket_play_once(websocket: WebSocket, seed: Optional[int] = None, 
             success = execute_placement(env, best_col, best_rotation)
             
             if not success:
+                print(f"Placement failed at step {step_count}")
                 break
-            
+                
             step_count += 1
             
             # Send frame update
             frame = env.render(mode="rgb_array")
             frame_data = StreamFrame(
                 frame=frame_to_base64(frame),
-                lines=env.lines_cleared,
+                lines=int(env.lines_cleared),
                 score=float(env.score),
-                step=step_count,
-                done=env.game_over
+                step=int(step_count),
+                done=bool(env.game_over)
             )
             await websocket.send_json({
                 **frame_data.model_dump(),
-                "placement": {"col": best_col, "rotation": best_rotation}
+                "placement": {"col": int(best_col), "rotation": int(best_rotation)}
             })
             
             # Spawn new piece if game continues
             if not env.game_over:
                 env._spawn_piece()
         
+        print(f"Game completed: score={env.score}, lines={env.lines_cleared}, steps={step_count}")
+        
         # Send final completion message
         await websocket.send_json({
             "final": True,
             "score": float(env.score),
-            "lines": env.lines_cleared,
-            "steps": step_count,
+            "lines": int(env.lines_cleared),
+            "steps": int(step_count),
             "algorithm": algo,
-            "seed": episode_seed
+            "seed": int(episode_seed) if episode_seed is not None else None
         })
+        print(f"Final message sent")
             
     except WebSocketDisconnect:
+        print("WebSocket disconnected")
         pass
     except Exception as e:
+        print(f"Exception in play-once: {e}")
         try:
             await websocket.send_json({"error": str(e)})
         except:
@@ -438,6 +447,7 @@ async def websocket_play_once(websocket: WebSocket, seed: Optional[int] = None, 
     finally:
         try:
             await websocket.close()
+            print("WebSocket closed")
         except:
             pass
 
