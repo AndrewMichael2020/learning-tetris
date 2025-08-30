@@ -52,7 +52,7 @@ jobs:
             --region "${{ env.GCP_REGION }}" \
             --platform managed \
             --allow-unauthenticated \
-            --set-env-vars "TRAIN_ENABLED=false" \
+            --set-env-vars "TRAIN_ENABLED=true" \
             --memory 1Gi \
             --cpu 1 \
             --concurrency 80 \
