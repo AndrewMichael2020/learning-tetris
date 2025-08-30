@@ -7,11 +7,11 @@ from typing import Optional
 
 class BaseWeights(BaseModel):
     """Base class for feature weights common to all algorithms."""
-    w_holes: float = Field(default=8.0, description="Weight for holes penalty")
-    w_max_height: float = Field(default=1.0, description="Weight for max height penalty")
-    w_bumpiness: float = Field(default=1.0, description="Weight for bumpiness penalty")
-    w_line_potential: float = Field(default=2.0, description="Weight for line clearing potential")
-    w_aggregate_height: float = Field(default=0.5, description="Weight for aggregate height penalty")
+    w_holes: float = Field(default=0.8, description="Weight for holes penalty")
+    w_max_height: float = Field(default=0.4, description="Weight for max height penalty")
+    w_bumpiness: float = Field(default=0.3, description="Weight for bumpiness penalty")
+    w_line_potential: float = Field(default=0.5, description="Weight for line clearing potential")
+    w_aggregate_height: float = Field(default=0.2, description="Weight for aggregate height penalty")
 
 
 class GreedyParams(BaseWeights):

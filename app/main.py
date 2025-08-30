@@ -378,6 +378,15 @@ async def websocket_stream(websocket: WebSocket, episodes: int = 1, seed: Option
         return
     
     try:
+        # Create agent once if using new algorithms
+        agent = None
+        if algo not in ["cem", "reinforce"]:
+            from .agent_factory import make_agent, get_default_params
+            params = get_default_params(algo)
+            agent = make_agent(algo, params)
+            if agent is None:
+                print(f"Failed to create agent for {algo}, falling back to policy")
+        
         # Stream multiple episodes if requested
         for episode in range(episodes):
             # Create environment
@@ -386,6 +395,10 @@ async def websocket_stream(websocket: WebSocket, episodes: int = 1, seed: Option
             # Use provided seed or generate random one
             episode_seed = seed if seed is not None else rng.integers(0, 1000000)
             env.reset(seed=episode_seed)
+            
+            # Reset agent state for new episode
+            if agent is not None:
+                agent.reset()
             
             step_count = 0
             max_steps = 500  # Limit for streaming
@@ -415,14 +428,12 @@ async def websocket_stream(websocket: WebSocket, episodes: int = 1, seed: Option
                         # Use trained policy weights
                         best_col, best_rotation, _ = get_best_placement(env, policy_weights)
                     else:
-                        # Use specific algorithm agents
-                        from .agent_factory import make_agent
-                        agent = make_agent(algo)
+                        # Use pre-created agent
                         if agent is None:
                             # Fallback to policy weights
                             best_col, best_rotation, _ = get_best_placement(env, policy_weights)
                         else:
-                            best_col, best_rotation = agent.get_action(env)
+                            best_col, best_rotation = agent.select_action(env)
                 except Exception as e:
                     print(f"Error getting best placement in stream: {e}")
                     # Use center fallback placement instead of left-biased
@@ -500,6 +511,15 @@ async def websocket_play_once(websocket: WebSocket, seed: Optional[int] = None, 
             await websocket.close()
             return
 
+        # Create agent once if using new algorithms
+        agent = None
+        if algo not in ["cem", "reinforce"]:
+            from .agent_factory import make_agent, get_default_params
+            params = get_default_params(algo)
+            agent = make_agent(algo, params)
+            if agent is None:
+                print(f"Failed to create agent for {algo}, falling back to policy")
+        
         # Create environment
         env = TetrisEnv()
         
@@ -507,6 +527,10 @@ async def websocket_play_once(websocket: WebSocket, seed: Optional[int] = None, 
         episode_seed = seed if seed is not None else rng.integers(0, 1000000)
         env.reset(seed=episode_seed)
         print(f"Environment created and reset with seed: {episode_seed}")
+        
+        # Reset agent state for new episode
+        if agent is not None:
+            agent.reset()
         
         step_count = 0
         max_steps = 1000  # Higher limit for single episode
@@ -537,14 +561,12 @@ async def websocket_play_once(websocket: WebSocket, seed: Optional[int] = None, 
                     # Use trained policy weights
                     best_col, best_rotation, _ = get_best_placement(env, policy_weights)
                 else:
-                    # Use specific algorithm agents
-                    from .agent_factory import make_agent
-                    agent = make_agent(algo)
+                    # Use pre-created agent
                     if agent is None:
                         # Fallback to policy weights
                         best_col, best_rotation, _ = get_best_placement(env, policy_weights)
                     else:
-                        best_col, best_rotation = agent.get_action(env)
+                        best_col, best_rotation = agent.select_action(env)
                         
                 print(f"Step {step_count}: best placement col={best_col}, rotation={best_rotation}")
             except Exception as e:

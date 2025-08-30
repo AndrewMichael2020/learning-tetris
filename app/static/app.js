@@ -810,6 +810,9 @@ class TetrisApp {
             
             // Handle episode completion messages
             if (data.episode_complete) {
+                // Add episode to statistics tracking
+                this.addEpisode(data.score || 0, data.lines || 0);
+                
                 const episodeText = data.total_episodes > 1 ? 
                     `Episode ${data.episode}/${data.total_episodes}` : 
                     'Episode';
