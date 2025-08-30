@@ -131,15 +131,17 @@ async def health_check():
     return HealthResponse(
         status="ok",
         train_enabled=config.train_enabled,
-        policy_loaded=policy_weights is not None
+        policy_loaded=policy_weights is not None,
+        current_algorithm=policy_metadata.get("algorithm", "cem") if policy_metadata else "cem"
     )
 
 
 @app.post("/api/play", response_model=PlayResponse)
 async def play_episodes(request: PlayRequest):
     """Run agent for specified number of episodes."""
-    if policy_weights is None:
-        raise HTTPException(status_code=500, detail="No policy loaded")
+    
+    # Import agent factory
+    from .agent_factory import make_agent, get_default_params
     
     episode_scores = []
     episode_lines = []
@@ -148,36 +150,98 @@ async def play_episodes(request: PlayRequest):
     # Create RNG with seed
     episode_rng = np.random.default_rng(request.seed)
     
-    for episode in range(request.episodes):
-        env = TetrisEnv()
-        env.reset(seed=episode_rng.integers(0, 1000000))
+    # Check if using new agents or legacy CEM/REINFORCE
+    if request.algo in ["greedy", "tabu", "anneal", "aco"]:
+        # Use new agent system
+        try:
+            params = get_default_params(request.algo)
+            agent = make_agent(request.algo, params)
+            
+            for episode in range(request.episodes):
+                env = TetrisEnv()
+                env.reset(seed=episode_rng.integers(0, 1000000))
+                agent.reset()  # Reset agent state for new episode
+                
+                steps = 0
+                max_steps = 1000
+                
+                while not env.game_over and steps < max_steps:
+                    # Get action from agent
+                    try:
+                        col, rotation = agent.select_action(env)
+                        success = execute_placement(env, col, rotation)
+                        
+                        if not success:
+                            break
+                            
+                        steps += 1
+                        
+                        # Spawn new piece
+                        if not env.game_over:
+                            env._spawn_piece()
+                            
+                    except Exception as e:
+                        print(f"Agent error: {e}")
+                        break
+                
+                episode_scores.append(env.score)
+                episode_lines.append(env.lines_cleared)
+                episode_lengths.append(steps)
+                
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Agent error: {str(e)}")
+            
+    else:
+        # Use legacy policy-based system for CEM/REINFORCE
+        if policy_weights is None:
+            raise HTTPException(status_code=500, detail="No policy loaded")
         
-        steps = 0
-        max_steps = 1000
-        
-        while not env.game_over and steps < max_steps:
-            # Get best placement using loaded policy
-            best_col, best_rotation, _ = get_best_placement(env, policy_weights)
+        for episode in range(request.episodes):
+            env = TetrisEnv()
+            env.reset(seed=episode_rng.integers(0, 1000000))
             
-            # Execute placement
-            success = execute_placement(env, best_col, best_rotation)
+            steps = 0
+            max_steps = 1000
             
-            if not success:
-                break
+            while not env.game_over and steps < max_steps:
+                # Get best placement using correct algorithm
+                try:
+                    if request.algo in ["cem", "reinforce"]:
+                        # Use trained policy weights
+                        best_col, best_rotation, _ = get_best_placement(env, policy_weights)
+                    else:
+                        # Use specific algorithm agents
+                        from .agent_factory import make_agent
+                        agent = make_agent(request.algo)
+                        if agent is None:
+                            # Fallback to policy weights
+                            best_col, best_rotation, _ = get_best_placement(env, policy_weights)
+                        else:
+                            best_col, best_rotation = agent.get_action(env)
+                except Exception as e:
+                    print(f"Error getting best placement in play: {e}")
+                    # Use fallback placement
+                    best_col, best_rotation = 0, 0
+                
+                # Execute placement
+                success = execute_placement(env, best_col, best_rotation)
+                
+                if not success:
+                    break
+                
+                steps += 1
+                
+                # Spawn new piece
+                if not env.game_over:
+                    env._spawn_piece()
             
-            steps += 1
-            
-            # Spawn new piece
-            if not env.game_over:
-                env._spawn_piece()
-        
-        episode_scores.append(env.score)
-        episode_lines.append(env.lines_cleared)
-        episode_lengths.append(steps)
+            episode_scores.append(env.score)
+            episode_lines.append(env.lines_cleared)
+            episode_lengths.append(steps)
     
     return PlayResponse(
         total_lines=sum(episode_lines),
-        avg_score=float(np.mean(episode_scores)),
+        avg_score=float(np.mean(episode_scores)) if episode_scores else 0.0,
         episodes=request.episodes,
         scores=episode_scores,
         lines_cleared=episode_lines,
@@ -217,6 +281,40 @@ async def train_agent(request: TrainRequest):
                 learning_rate=request.learning_rate
             )
             best_performance = result['best_reward']
+        
+        elif request.algo in ["greedy", "tabu", "anneal", "aco"]:
+            # New algorithms don't need training - they work directly with default parameters
+            # For now, just validate that the algorithm can be created
+            from .agent_factory import make_agent, get_default_params
+            
+            params = request.params or get_default_params(request.algo)
+            agent = make_agent(request.algo, params)
+            
+            # Run a quick evaluation to get performance
+            env = env_factory()
+            env.reset(seed=request.seed)
+            agent.reset()
+            
+            steps = 0
+            max_steps = 100  # Quick evaluation
+            
+            while not env.game_over and steps < max_steps:
+                try:
+                    col, rotation = agent.select_action(env)
+                    success = execute_placement(env, col, rotation) 
+                    
+                    if not success:
+                        break
+                    
+                    steps += 1
+                    
+                    if not env.game_over:
+                        env._spawn_piece()
+                        
+                except Exception:
+                    break
+            
+            best_performance = env.score + env.lines_cleared * 100
         
         else:
             raise ValueError(f"Unknown algorithm: {request.algo}")
@@ -286,8 +384,24 @@ async def websocket_stream(websocket: WebSocket, episodes: int = 1, seed: Option
                 # Control FPS (sleep before processing to ensure consistent timing)
                 await asyncio.sleep(1.0 / config.stream_fps)
                 
-                # Get best placement using the loaded policy
-                best_col, best_rotation, _ = get_best_placement(env, policy_weights)
+                # Get best placement using the correct algorithm
+                try:
+                    if algo in ["cem", "reinforce"]:
+                        # Use trained policy weights
+                        best_col, best_rotation, _ = get_best_placement(env, policy_weights)
+                    else:
+                        # Use specific algorithm agents
+                        from .agent_factory import make_agent
+                        agent = make_agent(algo)
+                        if agent is None:
+                            # Fallback to policy weights
+                            best_col, best_rotation, _ = get_best_placement(env, policy_weights)
+                        else:
+                            best_col, best_rotation = agent.get_action(env)
+                except Exception as e:
+                    print(f"Error getting best placement in stream: {e}")
+                    # Use fallback placement
+                    best_col, best_rotation = 0, 0
                 
                 # Execute placement
                 success = execute_placement(env, best_col, best_rotation)
@@ -392,8 +506,26 @@ async def websocket_play_once(websocket: WebSocket, seed: Optional[int] = None, 
             # Slightly slower than stream for better visualization 
             await asyncio.sleep(1.0 / max(config.stream_fps - 2, 1))
             
-            # Get best placement using the loaded policy
-            best_col, best_rotation, _ = get_best_placement(env, policy_weights)
+            # Get best placement using the correct algorithm
+            try:
+                if algo in ["cem", "reinforce"]:
+                    # Use trained policy weights
+                    best_col, best_rotation, _ = get_best_placement(env, policy_weights)
+                else:
+                    # Use specific algorithm agents
+                    from .agent_factory import make_agent
+                    agent = make_agent(algo)
+                    if agent is None:
+                        # Fallback to policy weights
+                        best_col, best_rotation, _ = get_best_placement(env, policy_weights)
+                    else:
+                        best_col, best_rotation = agent.get_action(env)
+                        
+                print(f"Step {step_count}: best placement col={best_col}, rotation={best_rotation}")
+            except Exception as e:
+                print(f"Error getting best placement at step {step_count}: {e}")
+                # Use fallback placement
+                best_col, best_rotation = 0, 0
             
             # Execute placement
             success = execute_placement(env, best_col, best_rotation)
@@ -404,6 +536,8 @@ async def websocket_play_once(websocket: WebSocket, seed: Optional[int] = None, 
                 
             step_count += 1
             
+            print(f"After placement: score={env.score}, lines={env.lines_cleared}, game_over={env.game_over}")
+            
             # Send frame update
             frame = env.render(mode="rgb_array")
             frame_data = StreamFrame(
@@ -413,10 +547,12 @@ async def websocket_play_once(websocket: WebSocket, seed: Optional[int] = None, 
                 step=int(step_count),
                 done=bool(env.game_over)
             )
-            await websocket.send_json({
+            message_data = {
                 **frame_data.model_dump(),
                 "placement": {"col": int(best_col), "rotation": int(best_rotation)}
-            })
+            }
+            print(f"Sending WebSocket message: score={message_data.get('score')}, lines={message_data.get('lines')}, step={message_data.get('step')}")
+            await websocket.send_json(message_data)
             
             # Spawn new piece if game continues
             if not env.game_over:

@@ -10,7 +10,7 @@ class Config:
     
     def __init__(self):
         self.port: int = int(os.getenv('PORT', '8080'))
-        self.train_enabled: bool = os.getenv('TRAIN_ENABLED', 'false').lower() == 'true'
+        self.train_enabled: bool = os.getenv('TRAIN_ENABLED', 'true').lower() == 'true'  # Default to enabled
         self.demo_seed: Optional[int] = self._parse_int_env('DEMO_SEED')
         self.policy_path: str = os.getenv('POLICY_PATH', 'policies/best.npz')
         self.max_episodes: int = int(os.getenv('MAX_EPISODES', '100'))

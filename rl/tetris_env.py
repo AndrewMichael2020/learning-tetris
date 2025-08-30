@@ -267,6 +267,22 @@ class TetrisEnv:
             return True
         return False
     
+    def _calculate_score(self, lines_cleared: int) -> int:
+        """Calculate score based on lines cleared using standard Tetris scoring."""
+        if lines_cleared == 0:
+            return 0
+        elif lines_cleared == 1:
+            return 100  # Single
+        elif lines_cleared == 2:
+            return 300  # Double  
+        elif lines_cleared == 3:
+            return 500  # Triple
+        elif lines_cleared == 4:
+            return 800  # Tetris (4 lines)
+        else:
+            # More than 4 lines (rare edge case)
+            return 800 + (lines_cleared - 4) * 200
+    
     def _drop_piece(self) -> bool:
         """Drop piece to bottom instantly. Returns True if piece locked."""
         while not self._check_collision(pos=[self.current_pos[0] + 1, self.current_pos[1]]):
@@ -275,7 +291,13 @@ class TetrisEnv:
         # Lock piece
         lines_cleared = self._lock_piece()
         self.lines_cleared += lines_cleared
-        self.score += lines_cleared * 10  # 10 points per line
+        
+        # Use improved scoring system
+        score_gained = self._calculate_score(lines_cleared)
+        self.score += score_gained
+        
+        # Add small bonus for piece placement to reward longer games
+        self.score += 1  # 1 point per piece placed
         
         return True
     
@@ -331,8 +353,15 @@ class TetrisEnv:
                 # Can't move down, lock piece
                 lines_cleared = self._lock_piece()
                 self.lines_cleared += lines_cleared
-                self.score += lines_cleared * 10
-                reward += lines_cleared * 10  # Line clear reward
+                
+                # Use improved scoring system
+                score_gained = self._calculate_score(lines_cleared)
+                self.score += score_gained
+                reward += score_gained  # Line clear reward
+                
+                # Add small bonus for piece placement
+                self.score += 1  # 1 point per piece placed
+                reward += 1
                 
                 if not self._spawn_piece():
                     self.game_over = True
