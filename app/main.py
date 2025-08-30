@@ -64,14 +64,35 @@ def load_policy():
 
 def frame_to_base64(frame: np.ndarray) -> str:
     """Convert RGB frame to base64 PNG string."""
-    # Convert to PIL Image (would need PIL/Pillow for real implementation)
-    # For now, create a simple bitmap representation
-    height, width = frame.shape[:2]
-    
-    # Create simple bitmap data (mock PNG)
-    # In real implementation, use PIL: Image.fromarray(frame).save(buffer, 'PNG')
-    mock_png_data = b'PNG_DATA_' + frame.tobytes()
-    return base64.b64encode(mock_png_data).decode('utf-8')
+    try:
+        from PIL import Image
+        # Convert numpy array to PIL Image and then to PNG
+        if frame.dtype != np.uint8:
+            frame = frame.astype(np.uint8)
+            
+        # Convert to PIL Image
+        img = Image.fromarray(frame)
+        
+        # Save to base64 PNG
+        buffer = io.BytesIO()
+        img.save(buffer, format='PNG')
+        png_data = buffer.getvalue()
+        return base64.b64encode(png_data).decode('utf-8')
+        
+    except ImportError:
+        # Fallback if PIL not available - create a simple data structure
+        height, width = frame.shape[:2]
+        
+        # Create JSON representation of the board
+        board_data = {
+            'width': int(width),
+            'height': int(height),
+            'data': frame.tolist()  # Convert numpy array to nested list
+        }
+        
+        # Encode as base64 JSON
+        json_str = json.dumps(board_data)
+        return base64.b64encode(json_str.encode('utf-8')).decode('utf-8')
 
 
 @asynccontextmanager
@@ -224,7 +245,7 @@ async def train_agent(request: TrainRequest):
 
 
 @app.websocket("/ws/stream")
-async def websocket_stream(websocket: WebSocket):
+async def websocket_stream(websocket: WebSocket, episodes: int = 1, seed: Optional[int] = None, algo: str = "cem"):
     """WebSocket endpoint for streaming agent gameplay."""
     await websocket.accept()
     
@@ -234,64 +255,98 @@ async def websocket_stream(websocket: WebSocket):
         return
     
     try:
-        # Create environment
-        env = TetrisEnv()
-        env.reset(seed=rng.integers(0, 1000000))
-        
-        step_count = 0
-        max_steps = 500  # Limit for streaming
-        
-        # Send initial frame
-        frame = env.render(mode="rgb_array")
-        frame_data = StreamFrame(
-            frame=frame_to_base64(frame),
-            lines=env.lines_cleared,
-            score=float(env.score),
-            step=step_count
-        )
-        await websocket.send_json(frame_data.model_dump())
-        
-        while not env.game_over and step_count < max_steps:
-            # Control FPS (sleep before processing to ensure consistent timing)
-            await asyncio.sleep(1.0 / config.stream_fps)
+        # Stream multiple episodes if requested
+        for episode in range(episodes):
+            # Create environment
+            env = TetrisEnv()
             
-            # Get best placement
-            best_col, best_rotation, _ = get_best_placement(env, policy_weights)
+            # Use provided seed or generate random one
+            episode_seed = seed if seed is not None else rng.integers(0, 1000000)
+            env.reset(seed=episode_seed)
             
-            # Execute placement
-            success = execute_placement(env, best_col, best_rotation)
+            step_count = 0
+            max_steps = 500  # Limit for streaming
             
-            if not success:
-                break
-            
-            step_count += 1
-            
-            # Send frame
+            # Send initial frame with episode info
             frame = env.render(mode="rgb_array")
             frame_data = StreamFrame(
                 frame=frame_to_base64(frame),
                 lines=env.lines_cleared,
                 score=float(env.score),
-                step=step_count,
-                done=env.game_over
+                step=step_count
             )
-            await websocket.send_json(frame_data.model_dump())
+            await websocket.send_json({
+                **frame_data.model_dump(),
+                "episode": episode + 1,
+                "total_episodes": episodes,
+                "algorithm": algo
+            })
             
-            # Spawn new piece if game continues
-            if not env.game_over:
-                env._spawn_piece()
-        
-        # Send final frame
-        if not env.game_over:
-            frame_data.done = True
-            await websocket.send_json(frame_data.model_dump())
+            while not env.game_over and step_count < max_steps:
+                # Control FPS (sleep before processing to ensure consistent timing)
+                await asyncio.sleep(1.0 / config.stream_fps)
+                
+                # Get best placement using the loaded policy
+                best_col, best_rotation, _ = get_best_placement(env, policy_weights)
+                
+                # Execute placement
+                success = execute_placement(env, best_col, best_rotation)
+                
+                if not success:
+                    break
+                
+                step_count += 1
+                
+                # Send frame
+                frame = env.render(mode="rgb_array")
+                frame_data = StreamFrame(
+                    frame=frame_to_base64(frame),
+                    lines=env.lines_cleared,
+                    score=float(env.score),
+                    step=step_count,
+                    done=env.game_over
+                )
+                await websocket.send_json({
+                    **frame_data.model_dump(),
+                    "episode": episode + 1,
+                    "total_episodes": episodes
+                })
+                
+                # Spawn new piece if game continues
+                if not env.game_over:
+                    env._spawn_piece()
             
+            # Send episode completion message
+            await websocket.send_json({
+                "episode_complete": True,
+                "episode": episode + 1,
+                "total_episodes": episodes,
+                "score": float(env.score),
+                "lines": env.lines_cleared,
+                "final": episode == episodes - 1
+            })
+            
+            # Brief pause between episodes if there are more to play
+            if episode < episodes - 1:
+                await asyncio.sleep(1.0)  # 1 second pause between episodes
+                
     except WebSocketDisconnect:
+        # Client disconnected, this is normal
         pass
     except Exception as e:
-        await websocket.send_json({"error": str(e)})
+        # Only try to send error if websocket is still connected
+        try:
+            await websocket.send_json({"error": str(e)})
+        except:
+            # Websocket already closed, ignore
+            pass
     finally:
-        await websocket.close()
+        # Only try to close if websocket is still connected
+        try:
+            await websocket.close()
+        except:
+            # Already closed, ignore
+            pass
 
 
 if __name__ == "__main__":
