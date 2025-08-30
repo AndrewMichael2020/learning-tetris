@@ -54,6 +54,7 @@ class HealthResponse(BaseModel):
     status: Literal["ok"] = Field(default="ok", description="Health status")
     train_enabled: bool = Field(description="Whether training is enabled")
     policy_loaded: bool = Field(description="Whether a policy is loaded")
+    current_algorithm: str = Field(description="Currently loaded algorithm")
 
 
 class StreamFrame(BaseModel):

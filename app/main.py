@@ -131,7 +131,8 @@ async def health_check():
     return HealthResponse(
         status="ok",
         train_enabled=config.train_enabled,
-        policy_loaded=policy_weights is not None
+        policy_loaded=policy_weights is not None,
+        current_algorithm=policy_metadata.get("algorithm", "cem") if policy_metadata else "cem"
     )
 
 

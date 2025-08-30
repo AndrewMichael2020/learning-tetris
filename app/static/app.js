@@ -272,6 +272,22 @@ class TetrisApp {
                 this.elements.quickTrainBtn.disabled = false;
             }
             
+            // Set algorithm dropdown to match the most recently trained algorithm
+            if (health.current_algorithm && this.elements.algorithm) {
+                const currentAlgo = health.current_algorithm.toLowerCase();
+                // Check if the option exists in the dropdown
+                const option = Array.from(this.elements.algorithm.options).find(opt => opt.value === currentAlgo);
+                if (option) {
+                    this.elements.algorithm.value = currentAlgo;
+                    console.log(`Algorithm dropdown set to: ${currentAlgo} (most recently trained)`);
+                    
+                    // Update play controls for the selected algorithm
+                    this.updatePlayControls();
+                } else {
+                    console.warn(`Algorithm ${currentAlgo} not found in dropdown options`);
+                }
+            }
+            
             this.log('System health check completed', 'success');
             
         } catch (error) {
