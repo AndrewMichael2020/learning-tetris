@@ -10,18 +10,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy project files
-COPY pyproject.toml .
-
-# Install Python dependencies
-RUN pip install --upgrade pip && pip install -e .
+# Copy requirements and install dependencies
+COPY requirements.txt .
+RUN pip install --upgrade pip && pip install -r requirements.txt
 
 # Copy application code
 COPY app ./app
 COPY rl ./rl
 
-# Copy policies if they exist (optional)
-COPY policies ./policies 2>/dev/null || true
+# Create policies directory (policies will be generated at runtime or loaded from external storage)
+RUN mkdir -p policies
 
 # Environment variables
 ENV PORT=8080
