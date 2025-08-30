@@ -29,4 +29,4 @@ ENV TRAIN_ENABLED=false
 EXPOSE 8080
 
 # Run the application
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080", "--workers", "1"]# Force rebuild - Sat Aug 30 20:42:53 UTC 2025
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080", "--workers", "1"]
