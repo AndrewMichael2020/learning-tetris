@@ -2,6 +2,12 @@
 
 A modern web application that demonstrates how artificial intelligence can learn to play Tetris using reinforcement learning algorithms. Watch as AI agents learn to stack blocks, clear lines, and achieve high scores through trial and error - just like humans do, but much faster!
 
+## Application Screenshot
+
+![Reinforcement Learning Tetris Web App](app-screenshot.png)
+
+*The complete web interface showing the game board, real-time statistics, control panel, and helpful instructions for using the application.*
+
 ## What This Application Does
 
 This is an interactive web application where you can:
@@ -81,17 +87,20 @@ When you open the web interface, you'll find:
 
 1. **Game Board**: A visual Tetris board where you can watch the AI play
 2. **Control Buttons**:
-   - **"Stream Agent"**: Watch the AI play continuously in real-time
-   - **"Play Once"**: Run a single game episode and see the final statistics
-   - **"Quick Train"**: Train a new agent (if training is enabled)
+   - **"Stream Agent"**: Watch the AI play continuously in real-time with live updates
+   - **"Play Once"**: Run a single complete game episode and view final statistics
+   - **"Quick Train"**: Train a new AI agent (available when training is enabled)
 3. **Statistics Panel**: Real-time updates showing:
    - Current score
    - Lines cleared
    - Steps taken
    - Game status
 4. **Episode Results**: Historical data from completed games
+5. **Button Instructions**: Clear explanations of what each control button does, displayed right below the game board
 
 ## How to Use the Application
+
+**Note**: Each button includes helpful instructions right in the interface - look for the "How to Use" section below the game board for detailed explanations of what each button does.
 
 ### Watching the AI Play
 

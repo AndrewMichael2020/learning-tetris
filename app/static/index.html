@@ -3,14 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RL Tetris</title>
+    <title>Reinforcement Learning Tetris</title>
     <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
     <div class="container">
         <header>
-            <h1>RL Tetris</h1>
-            <p>Reinforcement Learning Tetris with CEM and REINFORCE agents</p>
+            <h1>Reinforcement Learning Tetris</h1>
+            <p>AI agents learn to play Tetris using CEM and REINFORCE algorithms</p>
         </header>
         
         <div class="main-content">
@@ -22,6 +22,31 @@
                     <button id="streamBtn" class="btn btn-primary">Stream Agent</button>
                     <button id="playOnceBtn" class="btn btn-secondary">Play Once</button>
                     <button id="quickTrainBtn" class="btn btn-warning" disabled>Quick Train</button>
+                </div>
+                
+                <!-- Button Instructions -->
+                <div class="button-instructions">
+                    <h3>How to Use</h3>
+                    <div class="instruction-list">
+                        <div class="instruction-item">
+                            <span class="instruction-icon btn-primary-icon">▶</span>
+                            <div class="instruction-text">
+                                <strong>Stream Agent:</strong> Watch the AI play continuously in real-time with live updates
+                            </div>
+                        </div>
+                        <div class="instruction-item">
+                            <span class="instruction-icon btn-secondary-icon">●</span>
+                            <div class="instruction-text">
+                                <strong>Play Once:</strong> Run a single complete game episode and view final statistics
+                            </div>
+                        </div>
+                        <div class="instruction-item">
+                            <span class="instruction-icon btn-warning-icon">⚡</span>
+                            <div class="instruction-text">
+                                <strong>Quick Train:</strong> Train a new AI agent (available when training is enabled)
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
             
