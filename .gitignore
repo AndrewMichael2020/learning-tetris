@@ -1,17 +1,70 @@
+# Python
 .venv
 __pycache__
 .pytest_cache
-.idea
-.vscode
-dist
-build
-node_modules
-.DS_Store
 *.pyc
 *.pyo
+*.pyd
 *.egg-info/
 .coverage
 .tox/
 .mypy_cache/
-policies/
+dist/
+build/
+
+# IDEs and Editors
+.idea
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+*.tmp
+
+# Dependencies
+node_modules/
+
+# Logs
 *.log
+nohup.out
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Google Cloud / GCP
+.gcloudignore
+*.key
+*.json
+service-account*.json
+google-credentials*.json
+.google/
+
+# Google Cloud SDK (if installed locally)
+google-cloud-sdk/
+deployment/google-cloud-sdk/
+
+# Deployment artifacts
+.deployment/
+*.tar.gz
+
+# Trained models and policies (keep separate from code)
+policies/
+models/
+*.pkl
+*.joblib
+
+# Testing artifacts
+.pytest_cache/
+htmlcov/
+.coverage*
+coverage.xml
+
+# Temporary files
+*.tmp
+*.temp
+temp/
+tmp/

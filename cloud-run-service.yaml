@@ -1,0 +1,30 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: rl-tetris
+  annotations:
+    run.googleapis.com/ingress: all
+    run.googleapis.com/execution-environment: gen2
+spec:
+  template:
+    metadata:
+      annotations:
+        run.googleapis.com/cpu-throttling: "true"
+        run.googleapis.com/memory: "1Gi"
+        run.googleapis.com/cpu: "1"
+    spec:
+      containerConcurrency: 80
+      timeoutSeconds: 300
+      containers:
+        - image: northamerica-northeast1-docker.pkg.dev/hospigen/cloud-run-source-deploy/rl-tetris:latest
+          ports:
+            - containerPort: 8080
+          env:
+            - name: PORT
+              value: "8080"
+            - name: TRAIN_ENABLED
+              value: "false"
+          resources:
+            limits:
+              cpu: "1000m"
+              memory: "1Gi"

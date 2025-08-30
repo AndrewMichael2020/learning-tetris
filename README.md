@@ -2,23 +2,8 @@
 
 A colorful, interactive web application where artificial intelligence learns to play Tetris usi## 🧪 Testing & Verification
 
-### Running the Test Suite
-Ensure everything is working correctly by running the comprehensive test suite:
-
-```bash
-# Run all tests
-pytest -v
-
-# Run specific test modules
-pytest tests/test_env.py -v          # Test game environment
-pytest tests/test_api.py -v          # Test web API endpoints  
-pytest tests/test_features.py -v     # Test feature extraction
-pytest tests/test_cem.py -v          # Test CEM algorithm
-pytest tests/test_reinforce.py -v    # Test REINFORCE algorithm
-```
-
-### Quick Verification Script
-Use the built-in demo script to verify the app is running correctly:
+### Quick Start Script
+Use the built-in demo script to start the app:
 
 ```bash
 # Make sure the server is running first
