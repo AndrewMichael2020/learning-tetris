@@ -31,6 +31,7 @@ python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 ### 3️⃣ Open in Browser
 Visit `http://localhost:8000` and start exploring!
+![Screen](./Screenshot%202025-08-30%20011325.png)
 
 ## 🎮 How to Use the App
 
