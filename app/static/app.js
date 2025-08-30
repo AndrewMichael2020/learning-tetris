@@ -4,8 +4,11 @@ class TetrisApp {
         this.canvas = document.getElementById('gameCanvas');
         this.ctx = this.canvas.getContext('2d');
         this.websocket = null;
+        this.playOnceWebSocket = null;
+        this.playMultipleWebSocket = null;
         this.isStreaming = false;
         this.currentGame = null;
+        this.debugMode = false; // Set to true to enable debug logging
         
         this.initializeElements();
         this.setupEventListeners();
@@ -115,36 +118,85 @@ class TetrisApp {
         // Clear canvas and show we're starting
         this.drawEmptyBoard();
         
+        // Reset current stats
+        this.elements.currentScore.textContent = '0';
+        this.elements.currentLines.textContent = '0';
+        this.elements.currentSteps.textContent = '0';
+        
         try {
-            const response = await fetch('/api/play', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ episodes: 1, seed, algo })
-            });
+            // Use WebSocket for step-by-step visualization
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/ws/play-once?seed=${seed || ''}&algo=${algo}`;
             
-            const result = await response.json();
+            this.playOnceWebSocket = new WebSocket(wsUrl);
             
-            // Update stats
-            this.elements.totalEpisodes.textContent = result.episodes;
-            this.elements.avgScore.textContent = result.avg_score.toFixed(1);
-            this.elements.totalLines.textContent = result.total_lines;
-            this.elements.bestScore.textContent = Math.max(...result.scores);
+            this.playOnceWebSocket.onopen = () => {
+                this.log(`Starting single episode with ${algo.toUpperCase()} algorithm`, 'info');
+            };
             
-            // Update current stats to show the final state
-            this.elements.currentScore.textContent = result.scores[0];
-            this.elements.currentLines.textContent = result.episode_lengths[0];
-            this.elements.currentSteps.textContent = '500'; // Approximate
+            this.playOnceWebSocket.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                
+                if (data.error) {
+                    this.log('Play Once error: ' + data.error, 'error');
+                    this.elements.gameStatus.textContent = 'Error';
+                    return;
+                }
+                
+                // Update current stats in real-time
+                if (data.score !== undefined) {
+                    this.elements.currentScore.textContent = Math.floor(data.score);
+                }
+                if (data.lines !== undefined) {
+                    this.elements.currentLines.textContent = data.lines;
+                }
+                if (data.step !== undefined) {
+                    this.elements.currentSteps.textContent = data.step;
+                }
+                
+                // Render frame if available
+                if (data.frame) {
+                    this.renderFrame(data.frame);
+                }
+                
+                // Show placement information
+                if (data.placement) {
+                    this.log(`Placed piece at column ${data.placement.col}, rotation ${data.placement.rotation}`, 'debug');
+                }
+                
+                // Handle completion
+                if (data.final) {
+                    // Update final results
+                    this.elements.totalEpisodes.textContent = '1';
+                    this.elements.avgScore.textContent = data.score.toFixed(1);
+                    this.elements.totalLines.textContent = data.lines;
+                    this.elements.bestScore.textContent = data.score;
+                    
+                    this.elements.gameStatus.textContent = 'Completed';
+                    this.log(`Play Once completed! Score: ${data.score}, Lines: ${data.lines}, Steps: ${data.steps}`, 'success');
+                }
+            };
             
-            // Render the final game state
-            this.renderBoardDirectly(null);
+            this.playOnceWebSocket.onclose = () => {
+                this.playOnceWebSocket = null;
+                this.elements.playOnceBtn.disabled = false;
+                this.elements.playMultipleBtn.disabled = false;
+                
+                if (this.elements.gameStatus.textContent === 'Playing...') {
+                    this.elements.gameStatus.textContent = 'Completed';
+                }
+            };
             
-            this.elements.gameStatus.textContent = 'Completed';
-            this.log(`Played 1 episode. Score: ${result.avg_score.toFixed(1)}`, 'success');
+            this.playOnceWebSocket.onerror = (error) => {
+                this.log('Play Once WebSocket error: ' + error.message, 'error');
+                this.elements.gameStatus.textContent = 'Error';
+                this.elements.playOnceBtn.disabled = false;
+                this.elements.playMultipleBtn.disabled = false;
+            };
             
         } catch (error) {
-            this.log('Play failed: ' + error.message, 'error');
+            this.log('Play Once failed: ' + error.message, 'error');
             this.elements.gameStatus.textContent = 'Error';
-        } finally {
             this.elements.playOnceBtn.disabled = false;
             this.elements.playMultipleBtn.disabled = false;
         }
@@ -162,36 +214,106 @@ class TetrisApp {
         // Clear canvas and show we're starting
         this.drawEmptyBoard();
         
+        // Reset stats
+        this.elements.currentScore.textContent = '0';
+        this.elements.currentLines.textContent = '0';
+        this.elements.currentSteps.textContent = '0';
+        
         try {
-            const response = await fetch('/api/play', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ episodes, seed, algo })
-            });
+            this.log(`Starting ${episodes} episodes with ${algo.toUpperCase()} algorithm`, 'info');
             
-            const result = await response.json();
+            // Use the streaming endpoint for better visual feedback
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/ws/stream?episodes=${episodes}&seed=${seed || ''}&algo=${algo}`;
             
-            // Update stats
-            this.elements.totalEpisodes.textContent = result.episodes;
-            this.elements.avgScore.textContent = result.avg_score.toFixed(1);
-            this.elements.totalLines.textContent = result.total_lines;
-            this.elements.bestScore.textContent = Math.max(...result.scores);
+            this.playMultipleWebSocket = new WebSocket(wsUrl);
             
-            // Update current stats to show aggregate information
-            this.elements.currentScore.textContent = Math.round(result.avg_score);
-            this.elements.currentLines.textContent = Math.round(result.total_lines / episodes);
-            this.elements.currentSteps.textContent = Math.round(result.episode_lengths.reduce((a,b) => a+b, 0) / episodes);
+            let episodeResults = [];
+            let currentEpisode = 0;
             
-            // Render a representative final game state
-            this.renderBoardDirectly(null);
+            this.playMultipleWebSocket.onopen = () => {
+                this.log(`Connected for ${episodes} episodes`, 'info');
+            };
             
-            this.elements.gameStatus.textContent = 'Completed';
-            this.log(`Played ${episodes} episode(s). Avg score: ${result.avg_score.toFixed(1)}`, 'success');
+            this.playMultipleWebSocket.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                
+                if (data.error) {
+                    this.log('Play Multiple error: ' + data.error, 'error');
+                    this.elements.gameStatus.textContent = 'Error';
+                    return;
+                }
+                
+                // Update current episode info
+                if (data.episode !== undefined) {
+                    currentEpisode = data.episode;
+                    this.elements.gameStatus.textContent = `Playing episode ${currentEpisode}/${data.total_episodes || episodes}`;
+                }
+                
+                // Update real-time stats
+                if (data.score !== undefined) {
+                    this.elements.currentScore.textContent = Math.floor(data.score);
+                }
+                if (data.lines !== undefined) {
+                    this.elements.currentLines.textContent = data.lines;
+                }
+                if (data.step !== undefined) {
+                    this.elements.currentSteps.textContent = data.step;
+                }
+                
+                // Render frame
+                if (data.frame) {
+                    this.renderFrame(data.frame);
+                }
+                
+                // Handle episode completion
+                if (data.episode_complete) {
+                    episodeResults.push({
+                        score: data.score,
+                        lines: data.lines,
+                        episode: data.episode
+                    });
+                    
+                    this.log(`Episode ${data.episode} completed: Score ${data.score}, Lines ${data.lines}`, 'success');
+                    
+                    // Update aggregate statistics
+                    const avgScore = episodeResults.reduce((sum, ep) => sum + ep.score, 0) / episodeResults.length;
+                    const totalLines = episodeResults.reduce((sum, ep) => sum + ep.lines, 0);
+                    const bestScore = Math.max(...episodeResults.map(ep => ep.score));
+                    
+                    this.elements.totalEpisodes.textContent = episodeResults.length;
+                    this.elements.avgScore.textContent = avgScore.toFixed(1);
+                    this.elements.totalLines.textContent = totalLines;
+                    this.elements.bestScore.textContent = bestScore;
+                }
+                
+                // Handle final completion
+                if (data.final) {
+                    this.elements.gameStatus.textContent = 'Completed';
+                    this.log(`All ${episodes} episodes completed! Avg Score: ${this.elements.avgScore.textContent}`, 'success');
+                }
+            };
+            
+            this.playMultipleWebSocket.onclose = () => {
+                this.playMultipleWebSocket = null;
+                this.elements.playOnceBtn.disabled = false;
+                this.elements.playMultipleBtn.disabled = false;
+                
+                if (this.elements.gameStatus.textContent.startsWith('Playing')) {
+                    this.elements.gameStatus.textContent = 'Completed';
+                }
+            };
+            
+            this.playMultipleWebSocket.onerror = (error) => {
+                this.log('Play Multiple WebSocket error: ' + error.message, 'error');
+                this.elements.gameStatus.textContent = 'Error';
+                this.elements.playOnceBtn.disabled = false;
+                this.elements.playMultipleBtn.disabled = false;
+            };
             
         } catch (error) {
-            this.log('Play failed: ' + error.message, 'error');
+            this.log('Play Multiple failed: ' + error.message, 'error');
             this.elements.gameStatus.textContent = 'Error';
-        } finally {
             this.elements.playOnceBtn.disabled = false;
             this.elements.playMultipleBtn.disabled = false;
         }
@@ -602,6 +724,11 @@ class TetrisApp {
     }
     
     log(message, type = 'info') {
+        // Skip debug messages unless explicitly enabled
+        if (type === 'debug' && !this.debugMode) {
+            return;
+        }
+        
         const logEntry = document.createElement('div');
         logEntry.className = `log-entry ${type}`;
         logEntry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;

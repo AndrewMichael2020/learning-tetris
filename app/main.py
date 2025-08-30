@@ -349,6 +349,99 @@ async def websocket_stream(websocket: WebSocket, episodes: int = 1, seed: Option
             pass
 
 
+@app.websocket("/ws/play-once")
+async def websocket_play_once(websocket: WebSocket, seed: Optional[int] = None, algo: str = "cem"):
+    """WebSocket endpoint for single episode gameplay with step-by-step visualization."""
+    await websocket.accept()
+    
+    if policy_weights is None:
+        await websocket.send_json({"error": "No policy loaded"})
+        await websocket.close()
+        return
+    
+    try:
+        # Create environment
+        env = TetrisEnv()
+        
+        # Use provided seed or generate random one
+        episode_seed = seed if seed is not None else rng.integers(0, 1000000)
+        env.reset(seed=episode_seed)
+        
+        step_count = 0
+        max_steps = 1000  # Higher limit for single episode
+        
+        # Send initial frame
+        frame = env.render(mode="rgb_array")
+        frame_data = StreamFrame(
+            frame=frame_to_base64(frame),
+            lines=env.lines_cleared,
+            score=float(env.score),
+            step=step_count
+        )
+        await websocket.send_json({
+            **frame_data.model_dump(),
+            "algorithm": algo,
+            "seed": episode_seed,
+            "mode": "play-once"
+        })
+        
+        while not env.game_over and step_count < max_steps:
+            # Slightly slower than stream for better visualization 
+            await asyncio.sleep(1.0 / max(config.stream_fps - 2, 1))
+            
+            # Get best placement using the loaded policy
+            best_col, best_rotation, _ = get_best_placement(env, policy_weights)
+            
+            # Execute placement
+            success = execute_placement(env, best_col, best_rotation)
+            
+            if not success:
+                break
+            
+            step_count += 1
+            
+            # Send frame update
+            frame = env.render(mode="rgb_array")
+            frame_data = StreamFrame(
+                frame=frame_to_base64(frame),
+                lines=env.lines_cleared,
+                score=float(env.score),
+                step=step_count,
+                done=env.game_over
+            )
+            await websocket.send_json({
+                **frame_data.model_dump(),
+                "placement": {"col": best_col, "rotation": best_rotation}
+            })
+            
+            # Spawn new piece if game continues
+            if not env.game_over:
+                env._spawn_piece()
+        
+        # Send final completion message
+        await websocket.send_json({
+            "final": True,
+            "score": float(env.score),
+            "lines": env.lines_cleared,
+            "steps": step_count,
+            "algorithm": algo,
+            "seed": episode_seed
+        })
+            
+    except WebSocketDisconnect:
+        pass
+    except Exception as e:
+        try:
+            await websocket.send_json({"error": str(e)})
+        except:
+            pass
+    finally:
+        try:
+            await websocket.close()
+        except:
+            pass
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=config.port)
