@@ -283,12 +283,22 @@ async def train_agent(request: TrainRequest):
             best_performance = result['best_reward']
         
         elif request.algo in ["greedy", "tabu", "anneal", "aco"]:
-            # New algorithms don't need training - they work directly with default parameters
-            # For now, just validate that the algorithm can be created
+            # New algorithms don't need training - they work directly with their parameters
+            # For these, we'll just validate the parameters and run a quick evaluation
             from .agent_factory import make_agent, get_default_params
             
-            params = request.params or get_default_params(request.algo)
+            # Use provided parameters or defaults
+            if hasattr(request, 'params') and request.params is not None:
+                params = request.params
+            else:
+                params = get_default_params(request.algo)
+            
+            print(f"Training {request.algo} with params: {params}")
+            
+            # Validate agent creation
             agent = make_agent(request.algo, params)
+            if agent is None:
+                raise ValueError(f"Failed to create {request.algo} agent")
             
             # Run a quick evaluation to get performance
             env = env_factory()
@@ -296,7 +306,7 @@ async def train_agent(request: TrainRequest):
             agent.reset()
             
             steps = 0
-            max_steps = 100  # Quick evaluation
+            max_steps = 200  # More steps for better evaluation
             
             while not env.game_over and steps < max_steps:
                 try:
@@ -311,16 +321,20 @@ async def train_agent(request: TrainRequest):
                     if not env.game_over:
                         env._spawn_piece()
                         
-                except Exception:
+                except Exception as e:
+                    print(f"Error during agent evaluation: {e}")
                     break
             
+            # Calculate performance score
             best_performance = env.score + env.lines_cleared * 100
+            print(f"Agent performance: Score={env.score}, Lines={env.lines_cleared}, Total={best_performance}")
         
         else:
             raise ValueError(f"Unknown algorithm: {request.algo}")
         
-        # Reload policy after training
-        load_policy()
+        # Reload policy after training (for CEM/REINFORCE only)
+        if request.algo in ["cem", "reinforce"]:
+            load_policy()
         
         training_time = time.time() - start_time
         
@@ -333,6 +347,7 @@ async def train_agent(request: TrainRequest):
         )
         
     except Exception as e:
+        print(f"Training error: {e}")  # Server-side logging
         return TrainResponse(
             success=False,
             message=f"Training failed: {str(e)}",

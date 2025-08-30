@@ -76,6 +76,10 @@ header p {
     display: block;
     margin: 0 auto 20px auto;
     background-color: #000;
+    width: 100%;
+    max-width: 300px;
+    height: auto;
+    aspect-ratio: 1/2; /* Maintain 1:2 aspect ratio for Tetris */
 }
 
 .game-controls {

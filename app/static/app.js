@@ -177,32 +177,38 @@ class TetrisApp {
         const params = {};
         
         if (algo === 'greedy') {
-            params.w_holes = parseFloat(document.getElementById('play_greedy_w_holes')?.value || '8.0');
-            params.w_max_height = parseFloat(document.getElementById('play_greedy_w_max_height')?.value || '1.0');
-            params.w_bumpiness = parseFloat(document.getElementById('play_greedy_w_bumpiness')?.value || '0.5');
+            params.w_holes = parseFloat(document.getElementById('greedy_w_holes')?.value || '8.0');
+            params.w_max_height = parseFloat(document.getElementById('greedy_w_max_height')?.value || '1.0');
+            params.w_bumpiness = parseFloat(document.getElementById('greedy_w_bumpiness')?.value || '1.0');
         } else if (algo === 'tabu') {
-            params.tenure = parseInt(document.getElementById('play_tabu_tenure')?.value || '7');
-            params.neighborhood_top_k = parseInt(document.getElementById('play_tabu_neighborhood_k')?.value || '10');
-            params.aspiration = document.getElementById('play_tabu_aspiration')?.checked || true;
+            params.tenure = parseInt(document.getElementById('tabu_tenure')?.value || '25');
+            params.neighborhood_top_k = parseInt(document.getElementById('tabu_neighborhood_k')?.value || '10');
+            params.aspiration = document.getElementById('tabu_aspiration')?.checked !== false; // Default to true
             params.w_holes = parseFloat(document.getElementById('tabu_w_holes')?.value || '8.0');
             params.w_max_height = parseFloat(document.getElementById('tabu_w_max_height')?.value || '1.0');
+            params.rng_seed = parseInt(this.elements.trainSeed?.value || '42');
         } else if (algo === 'anneal') {
-            const T0_input = document.getElementById('play_anneal_T0')?.value;
-            params.T0 = T0_input ? parseFloat(T0_input) : null;
-            params.alpha = parseFloat(document.getElementById('play_anneal_alpha')?.value || '0.99');
+            const T0_input = document.getElementById('anneal_T0')?.value;
+            if (T0_input && T0_input.trim() !== '') {
+                params.T0 = parseFloat(T0_input);
+            }
+            params.alpha = parseFloat(document.getElementById('anneal_alpha')?.value || '0.99');
             params.proposal_top_k = parseInt(document.getElementById('anneal_proposal_k')?.value || '10');
             params.w_holes = parseFloat(document.getElementById('anneal_w_holes')?.value || '8.0');
             params.w_max_height = parseFloat(document.getElementById('anneal_w_max_height')?.value || '1.0');
+            params.rng_seed = parseInt(this.elements.trainSeed?.value || '42');
         } else if (algo === 'aco') {
-            params.alpha = parseFloat(document.getElementById('play_aco_alpha')?.value || '1.0');
-            params.beta = parseFloat(document.getElementById('play_aco_beta')?.value || '2.0');
+            params.alpha = parseFloat(document.getElementById('aco_alpha')?.value || '1.0');
+            params.beta = parseFloat(document.getElementById('aco_beta')?.value || '2.0');
             params.rho = parseFloat(document.getElementById('aco_rho')?.value || '0.1');
-            params.ants = parseInt(document.getElementById('play_aco_ants')?.value || '20');
+            params.ants = parseInt(document.getElementById('aco_ants')?.value || '20');
             params.elite = parseInt(document.getElementById('aco_elite')?.value || '1');
             params.w_holes = parseFloat(document.getElementById('aco_w_holes')?.value || '8.0');
             params.w_max_height = parseFloat(document.getElementById('aco_w_max_height')?.value || '1.0');
+            params.rng_seed = parseInt(this.elements.trainSeed?.value || '42');
         }
         
+        console.log(`Collected params for ${algo}:`, params);
         return params;
     }
     
@@ -600,6 +606,7 @@ class TetrisApp {
             this.log(`Starting REINFORCE training: ${requestBody.episodes} episodes, LR=${requestBody.learning_rate}`, 'info');
         } else {
             this.log(`Configuring ${this.getAlgorithmDisplayName(algo)} with optimized parameters`, 'info');
+            console.log('Training request body:', requestBody); // Debug log
         }
         
         // Show training visualization
@@ -614,6 +621,10 @@ class TetrisApp {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(requestBody)
             });
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
             
             const result = await response.json();
             
@@ -631,11 +642,13 @@ class TetrisApp {
                 await this.checkHealth();
             } else {
                 this.elements.gameStatus.textContent = 'Training Failed';
-                this.log('Training failed: ' + result.message, 'error');
+                this.log('Training failed: ' + (result.message || 'Unknown error'), 'error');
+                console.error('Training error details:', result);
                 this.drawEmptyBoard();
             }
             
         } catch (error) {
+            console.error('Training request failed:', error);
             this.log('Training failed: ' + error.message, 'error');
             this.elements.gameStatus.textContent = 'Error';
             this.drawEmptyBoard();
@@ -894,30 +907,16 @@ class TetrisApp {
             ctx.fillStyle = '#000';
             ctx.fillRect(0, 0, this.offscreenCanvas.width, this.offscreenCanvas.height);
             
-            // Calculate proper scaling to maintain aspect ratio
-            // Expected Tetris ratio is 10:20 (width:height) = 1:2
-            const expectedRatio = 0.5; // width/height = 10/20 = 0.5
-            const canvasRatio = this.canvas.width / this.canvas.height;
+            // Force scale the image to fill the entire canvas while maintaining aspect ratio
+            // Use the full canvas dimensions without complex ratio calculations
+            const drawX = 0;
+            const drawY = 0;
+            const drawWidth = this.offscreenCanvas.width;
+            const drawHeight = this.offscreenCanvas.height;
             
-            let drawWidth, drawHeight, drawX, drawY;
+            console.log('Drawing PNG at full canvas size:', drawX, drawY, drawWidth, drawHeight);
             
-            if (canvasRatio > expectedRatio) {
-                // Canvas is wider than expected - fit to height
-                drawHeight = this.offscreenCanvas.height;
-                drawWidth = this.offscreenCanvas.height * expectedRatio;
-                drawX = (this.offscreenCanvas.width - drawWidth) / 2;
-                drawY = 0;
-            } else {
-                // Canvas is taller than expected - fit to width  
-                drawWidth = this.offscreenCanvas.width;
-                drawHeight = this.offscreenCanvas.width / expectedRatio;
-                drawX = 0;
-                drawY = (this.offscreenCanvas.height - drawHeight) / 2;
-            }
-            
-            console.log('Drawing PNG at:', drawX, drawY, drawWidth, drawHeight);
-            
-            // Scale and draw the game board image maintaining aspect ratio
+            // Scale and draw the game board image to fill entire canvas
             ctx.imageSmoothingEnabled = false; // Pixel-perfect scaling
             ctx.drawImage(img, drawX, drawY, drawWidth, drawHeight);
             
