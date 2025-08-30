@@ -10,6 +10,10 @@ class TetrisApp {
         this.currentGame = null;
         this.debugMode = false; // Set to true to enable debug logging
         
+        // Episode tracking for statistics
+        this.episodeHistory = [];
+        this.resetStats();
+        
         // Colorful Tetris piece colors
         this.tetrisPieceColors = [
             '#FF0D72', // Hot pink
@@ -39,6 +43,7 @@ class TetrisApp {
             playOnceBtn: document.getElementById('playOnceBtn'),
             playMultipleBtn: document.getElementById('playMultipleBtn'),
             quickTrainBtn: document.getElementById('quickTrainBtn'),
+            clearResultsBtn: document.getElementById('clearResultsBtn'),
             
             // Stats
             currentScore: document.getElementById('currentScore'),
@@ -51,6 +56,7 @@ class TetrisApp {
             avgScore: document.getElementById('avgScore'),
             totalLines: document.getElementById('totalLines'),
             bestScore: document.getElementById('bestScore'),
+            maxScore: document.getElementById('maxScore'),
             
             // Controls
             episodes: document.getElementById('episodes'),
@@ -65,11 +71,21 @@ class TetrisApp {
             trainEpisodes: document.getElementById('trainEpisodes'),
             learningRate: document.getElementById('learningRate'),
             
-            // Status
-            policyStatus: document.getElementById('policyStatus'),
-            trainingStatus: document.getElementById('trainingStatus'),
+            // Activity Log
             activityLog: document.getElementById('activityLog')
         };
+        
+        // Debug: Check if critical elements were found
+        console.log('DOM Elements Status:');
+        const criticalElements = ['currentScore', 'currentLines', 'avgScore', 'totalLines', 'bestScore'];
+        for (const key of criticalElements) {
+            const element = this.elements[key];
+            if (!element) {
+                console.error(`❌ MISSING: ${key}`);
+            } else {
+                console.log(`✅ FOUND: ${key} = ${element.textContent}`);
+            }
+        }
     }
     
     setupEventListeners() {
@@ -78,9 +94,67 @@ class TetrisApp {
         this.elements.playOnceBtn.addEventListener('click', () => this.playOnce());
         this.elements.playMultipleBtn.addEventListener('click', () => this.playEpisodes());
         this.elements.quickTrainBtn.addEventListener('click', () => this.quickTrain());
+        this.elements.clearResultsBtn.addEventListener('click', () => this.resetStats());
         
-        // Training algorithm change
+        // Algorithm change listeners (both play and training)
+        this.elements.algorithm.addEventListener('change', () => this.updatePlayControls());
         this.elements.trainAlgo.addEventListener('change', () => this.updateTrainingControls());
+        
+        // Initialize controls
+        this.updatePlayControls();
+    }
+    
+    resetStats() {
+        // Reset episode tracking 
+        this.episodeHistory = [];
+        this.updateEpisodeResults();
+    }
+    
+    addEpisode(score, lines) {
+        // Add episode to history
+        this.episodeHistory.push({ score: score, lines: lines });
+        this.updateEpisodeResults();
+        console.log('Episode added:', { score, lines, total: this.episodeHistory.length });
+    }
+    
+    updateEpisodeResults() {
+        // Calculate and update Episode Results
+        const totalEpisodes = this.episodeHistory.length;
+        
+        if (totalEpisodes === 0) {
+            // Reset all to 0
+            this.safeUpdateElement('totalEpisodes', '0');
+            this.safeUpdateElement('avgScore', '0.0');
+            this.safeUpdateElement('totalLines', '0');
+            this.safeUpdateElement('bestScore', '0');
+            this.safeUpdateElement('maxScore', '0');
+            return;
+        }
+        
+        // Calculate statistics
+        const totalScore = this.episodeHistory.reduce((sum, ep) => sum + ep.score, 0);
+        const totalLines = this.episodeHistory.reduce((sum, ep) => sum + ep.lines, 0);
+        const avgScore = totalScore / totalEpisodes;
+        const bestScore = Math.max(...this.episodeHistory.map(ep => ep.score));
+        const maxScore = bestScore; // Same as best score for our purposes
+        
+        // Update displays
+        this.safeUpdateElement('totalEpisodes', totalEpisodes.toString());
+        this.safeUpdateElement('avgScore', avgScore.toFixed(1));
+        this.safeUpdateElement('totalLines', totalLines.toString());
+        this.safeUpdateElement('bestScore', bestScore.toString());
+        this.safeUpdateElement('maxScore', maxScore.toString());
+        
+        console.log('Episode Results updated:', { totalEpisodes, avgScore: avgScore.toFixed(1), totalLines, bestScore, maxScore });
+    }
+    
+    safeUpdateElement(id, value) {
+        const element = document.getElementById(id);
+        if (element) {
+            element.textContent = value;
+        } else {
+            console.warn(`Element ${id} not found`);
+        }
     }
     
     getAlgorithmDisplayName(algo) {
@@ -97,35 +171,62 @@ class TetrisApp {
         const params = {};
         
         if (algo === 'greedy') {
-            params.w_holes = parseFloat(document.getElementById('greedy_w_holes').value);
-            params.w_max_height = parseFloat(document.getElementById('greedy_w_max_height').value);
-            params.w_bumpiness = parseFloat(document.getElementById('greedy_w_bumpiness').value);
+            params.w_holes = parseFloat(document.getElementById('play_greedy_w_holes')?.value || '8.0');
+            params.w_max_height = parseFloat(document.getElementById('play_greedy_w_max_height')?.value || '1.0');
+            params.w_bumpiness = parseFloat(document.getElementById('play_greedy_w_bumpiness')?.value || '0.5');
         } else if (algo === 'tabu') {
-            params.tenure = parseInt(document.getElementById('tabu_tenure').value);
-            params.neighborhood_top_k = parseInt(document.getElementById('tabu_neighborhood_k').value);
-            params.aspiration = document.getElementById('tabu_aspiration').checked;
-            params.w_holes = parseFloat(document.getElementById('tabu_w_holes').value);
-            params.w_max_height = parseFloat(document.getElementById('tabu_w_max_height').value);
+            params.tenure = parseInt(document.getElementById('play_tabu_tenure')?.value || '7');
+            params.neighborhood_top_k = parseInt(document.getElementById('play_tabu_neighborhood_k')?.value || '10');
+            params.aspiration = document.getElementById('play_tabu_aspiration')?.checked || true;
+            params.w_holes = parseFloat(document.getElementById('tabu_w_holes')?.value || '8.0');
+            params.w_max_height = parseFloat(document.getElementById('tabu_w_max_height')?.value || '1.0');
         } else if (algo === 'anneal') {
-            const T0_input = document.getElementById('anneal_T0').value;
+            const T0_input = document.getElementById('play_anneal_T0')?.value;
             params.T0 = T0_input ? parseFloat(T0_input) : null;
-            params.alpha = parseFloat(document.getElementById('anneal_alpha').value);
-            params.proposal_top_k = parseInt(document.getElementById('anneal_proposal_k').value);
-            params.w_holes = parseFloat(document.getElementById('anneal_w_holes').value);
-            params.w_max_height = parseFloat(document.getElementById('anneal_w_max_height').value);
+            params.alpha = parseFloat(document.getElementById('play_anneal_alpha')?.value || '0.99');
+            params.proposal_top_k = parseInt(document.getElementById('anneal_proposal_k')?.value || '10');
+            params.w_holes = parseFloat(document.getElementById('anneal_w_holes')?.value || '8.0');
+            params.w_max_height = parseFloat(document.getElementById('anneal_w_max_height')?.value || '1.0');
         } else if (algo === 'aco') {
-            params.alpha = parseFloat(document.getElementById('aco_alpha').value);
-            params.beta = parseFloat(document.getElementById('aco_beta').value);
-            params.rho = parseFloat(document.getElementById('aco_rho').value);
-            params.ants = parseInt(document.getElementById('aco_ants').value);
-            params.elite = parseInt(document.getElementById('aco_elite').value);
-            params.w_holes = parseFloat(document.getElementById('aco_w_holes').value);
-            params.w_max_height = parseFloat(document.getElementById('aco_w_max_height').value);
+            params.alpha = parseFloat(document.getElementById('play_aco_alpha')?.value || '1.0');
+            params.beta = parseFloat(document.getElementById('play_aco_beta')?.value || '2.0');
+            params.rho = parseFloat(document.getElementById('aco_rho')?.value || '0.1');
+            params.ants = parseInt(document.getElementById('play_aco_ants')?.value || '20');
+            params.elite = parseInt(document.getElementById('aco_elite')?.value || '1');
+            params.w_holes = parseFloat(document.getElementById('aco_w_holes')?.value || '8.0');
+            params.w_max_height = parseFloat(document.getElementById('aco_w_max_height')?.value || '1.0');
         }
         
         return params;
     }
     
+    updatePlayControls() {
+        const algo = this.elements.algorithm.value;
+        
+        // Show/hide algorithm-specific parameter sections for play controls
+        const playControlSections = [
+            'playGreedyControls', 'playTabuControls', 'playAnnealControls', 'playAcoControls'
+        ];
+        
+        playControlSections.forEach(sectionId => {
+            const section = document.getElementById(sectionId);
+            if (section) {
+                section.style.display = 'none';
+            }
+        });
+        
+        // Show the appropriate control section for new algorithms
+        if (['greedy', 'tabu', 'anneal', 'aco'].includes(algo)) {
+            const activeSection = 'play' + algo.charAt(0).toUpperCase() + algo.slice(1) + 'Controls';
+            const activeElement = document.getElementById(activeSection);
+            if (activeElement) {
+                activeElement.style.display = 'block';
+            }
+        }
+        
+        this.log(`Switched to ${algo.toUpperCase()} algorithm for playing`, 'info');
+    }
+
     updateTrainingControls() {
         const algo = this.elements.trainAlgo.value;
         
@@ -157,20 +258,12 @@ class TetrisApp {
             const response = await fetch('/api/health');
             const health = await response.json();
             
-            this.elements.policyStatus.textContent = health.policy_loaded ? 'Loaded' : 'Not loaded';
-            this.elements.trainingStatus.textContent = health.train_enabled ? 'Enabled' : 'Disabled';
-            
-            // Enable/disable training button
-            this.elements.quickTrainBtn.disabled = !health.train_enabled;
-            
-            // Show/hide training controls based on training status
+            // Training is now always enabled, so just show training controls
             const trainControlsElement = document.getElementById('trainControls');
-            if (health.train_enabled) {
+            if (trainControlsElement) {
                 console.log('Training enabled - showing controls');
                 trainControlsElement.style.display = 'block';
-            } else {
-                console.log('Training disabled - hiding controls');
-                trainControlsElement.style.display = 'none';
+                this.elements.quickTrainBtn.disabled = false;
             }
             
             this.log('System health check completed', 'success');
@@ -207,6 +300,7 @@ class TetrisApp {
             params.append('algo', algo);
             
             const wsUrl = `${protocol}//${window.location.host}/ws/play-once?${params}`;
+            console.log('Play Once WebSocket URL:', wsUrl); // Debug log
             
             this.playOnceWebSocket = new WebSocket(wsUrl);
             
@@ -215,45 +309,101 @@ class TetrisApp {
             };
             
             this.playOnceWebSocket.onmessage = (event) => {
-                const data = JSON.parse(event.data);
-                
-                if (data.error) {
-                    this.log('Play Once error: ' + data.error, 'error');
-                    this.elements.gameStatus.textContent = 'Error';
-                    return;
-                }
-                
-                // Update current stats in real-time
-                if (data.score !== undefined) {
-                    this.elements.currentScore.textContent = Math.floor(data.score);
-                }
-                if (data.lines !== undefined) {
-                    this.elements.currentLines.textContent = data.lines;
-                }
-                if (data.step !== undefined) {
-                    this.elements.currentSteps.textContent = data.step;
-                }
-                
-                // Render frame if available
-                if (data.frame) {
-                    this.renderFrame(data.frame);
-                }
-                
-                // Show placement information
-                if (data.placement) {
-                    this.log(`Placed piece at column ${data.placement.col}, rotation ${data.placement.rotation}`, 'debug');
-                }
-                
-                // Handle completion
-                if (data.final) {
-                    // Update final results
-                    this.elements.totalEpisodes.textContent = '1';
-                    this.elements.avgScore.textContent = data.score.toFixed(1);
-                    this.elements.totalLines.textContent = data.lines;
-                    this.elements.bestScore.textContent = data.score;
+                try {
+                    const data = JSON.parse(event.data);
                     
-                    this.elements.gameStatus.textContent = 'Completed';
-                    this.log(`Play Once completed! Score: ${data.score}, Lines: ${data.lines}, Steps: ${data.steps}`, 'success');
+                    console.log('Play Once WebSocket message received:', data); // Debug log
+                    
+                    if (data.error) {
+                        this.log('Play Once error: ' + data.error, 'error');
+                        this.elements.gameStatus.textContent = 'Error';
+                        return;
+                    }
+                    
+                    // Force update current stats in real-time - ensure elements exist
+                    console.log('Updating statistics...', {score: data.score, lines: data.lines, step: data.step});
+                    
+                    // Score update
+                    if (data.score !== undefined && data.score !== null) {
+                        try {
+                            const scoreElement = document.getElementById('currentScore');
+                            if (scoreElement) {
+                                scoreElement.textContent = Math.floor(data.score);
+                                console.log('✅ Score updated to:', scoreElement.textContent);
+                            } else {
+                                console.error('❌ currentScore element not found in DOM');
+                            }
+                        } catch (e) {
+                            console.error('Error updating score:', e);
+                        }
+                    }
+                    
+                    // Lines update  
+                    if (data.lines !== undefined && data.lines !== null) {
+                        try {
+                            const linesElement = document.getElementById('currentLines');
+                            if (linesElement) {
+                                linesElement.textContent = data.lines;
+                                console.log('✅ Lines updated to:', linesElement.textContent);
+                            } else {
+                                console.error('❌ currentLines element not found in DOM');
+                            }
+                        } catch (e) {
+                            console.error('Error updating lines:', e);
+                        }
+                    }
+                    
+                    // Steps update
+                    if (data.step !== undefined && data.step !== null) {
+                        try {
+                            const stepsElement = document.getElementById('currentSteps');
+                            if (stepsElement) {
+                                stepsElement.textContent = data.step;
+                                console.log('✅ Steps updated to:', stepsElement.textContent);
+                            } else {
+                                console.error('❌ currentSteps element not found in DOM');
+                            }
+                        } catch (e) {
+                            console.error('Error updating steps:', e);
+                        }
+                    }
+                    
+                    // Update game status
+                    if (data.done !== undefined) {
+                        this.elements.gameStatus.textContent = data.done ? 'Completed' : 'Playing';
+                    }
+                    
+                    // Render frame if available
+                    if (data.frame) {
+                        this.renderFrame(data.frame);
+                    }
+                    
+                    // Show placement information
+                    if (data.placement) {
+                        this.log(`Placed piece at column ${data.placement.col}, rotation ${data.placement.rotation}`, 'debug');
+                    }
+                    
+                    // Handle completion
+                    if (data.final) {
+                        console.log('🎯 FINAL MESSAGE received:', data);
+                        
+                        // Add episode to history for proper tracking
+                        const finalScore = data.score || 0;
+                        const finalLines = data.lines || 0;
+                        this.addEpisode(finalScore, finalLines);
+                        
+                        // Update game status
+                        const gameStatusEl = document.getElementById('gameStatus');
+                        if (gameStatusEl) {
+                            gameStatusEl.textContent = 'Completed';
+                            console.log('✅ gameStatus updated to: Completed');
+                        }
+                        
+                        this.log(`Episode completed! Score: ${finalScore}, Lines: ${finalLines}`, 'success');
+                    }
+                } catch (error) {
+                    console.error('Error processing Play Once WebSocket message:', error);
+                    this.log('Error processing message: ' + error.message, 'error');
                 }
             };
             
@@ -361,23 +511,16 @@ class TetrisApp {
                         episode: data.episode
                     });
                     
+                    // Add to global episode tracking
+                    this.addEpisode(data.score, data.lines);
+                    
                     this.log(`Episode ${data.episode} completed: Score ${data.score}, Lines ${data.lines}`, 'success');
-                    
-                    // Update aggregate statistics
-                    const avgScore = episodeResults.reduce((sum, ep) => sum + ep.score, 0) / episodeResults.length;
-                    const totalLines = episodeResults.reduce((sum, ep) => sum + ep.lines, 0);
-                    const bestScore = Math.max(...episodeResults.map(ep => ep.score));
-                    
-                    this.elements.totalEpisodes.textContent = episodeResults.length;
-                    this.elements.avgScore.textContent = avgScore.toFixed(1);
-                    this.elements.totalLines.textContent = totalLines;
-                    this.elements.bestScore.textContent = bestScore;
                 }
                 
                 // Handle final completion
                 if (data.final) {
                     this.elements.gameStatus.textContent = 'Completed';
-                    this.log(`All ${episodes} episodes completed! Avg Score: ${this.elements.avgScore.textContent}`, 'success');
+                    this.log(`All ${episodes} episodes completed! Episodes in history: ${this.episodeHistory.length}`, 'success');
                 }
             };
             
@@ -720,19 +863,49 @@ class TetrisApp {
     renderPngFrame(pngData) {
         const img = new Image();
         img.onload = () => {
+            console.log('PNG image loaded:', img.width, 'x', img.height);
+            
             // Clear canvas
             this.ctx.fillStyle = '#000';
             this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
             
-            // Scale and draw the game board image to fill the full canvas
+            // Calculate proper scaling to maintain aspect ratio
+            // Expected Tetris ratio is 10:20 (width:height) = 1:2
+            const expectedRatio = 0.5; // width/height = 10/20 = 0.5
+            const canvasRatio = this.canvas.width / this.canvas.height;
+            
+            let drawWidth, drawHeight, drawX, drawY;
+            
+            if (canvasRatio > expectedRatio) {
+                // Canvas is wider than expected - fit to height
+                drawHeight = this.canvas.height;
+                drawWidth = this.canvas.height * expectedRatio;
+                drawX = (this.canvas.width - drawWidth) / 2;
+                drawY = 0;
+            } else {
+                // Canvas is taller than expected - fit to width  
+                drawWidth = this.canvas.width;
+                drawHeight = this.canvas.width / expectedRatio;
+                drawX = 0;
+                drawY = (this.canvas.height - drawHeight) / 2;
+            }
+            
+            console.log('Drawing PNG at:', drawX, drawY, drawWidth, drawHeight);
+            
+            // Scale and draw the game board image maintaining aspect ratio
             this.ctx.imageSmoothingEnabled = false; // Pixel-perfect scaling
-            this.ctx.drawImage(img, 0, 0, this.canvas.width, this.canvas.height);
+            this.ctx.drawImage(img, drawX, drawY, drawWidth, drawHeight);
             
             // Add colorful overlay effect to the PNG - analyze pixels and recolor them
             this.colorizeCanvas();
             
             // Draw grid overlay
             this.drawGrid();
+        };
+        
+        img.onerror = () => {
+            console.error('Failed to load PNG frame');
+            this.drawEmptyBoard();
         };
         
         img.src = 'data:image/png;base64,' + pngData;
@@ -839,7 +1012,7 @@ class TetrisApp {
     renderBoardDirectly(frameData) {
         console.log('renderBoardDirectly called'); // Debug log
         
-        // Clear canvas
+        // Clear canvas with black background
         this.ctx.fillStyle = '#000';
         this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
         
@@ -847,8 +1020,8 @@ class TetrisApp {
         const cellWidth = this.canvas.width / 10;
         const cellHeight = this.canvas.height / 20;
         
-        // Draw grid
-        this.drawGrid();
+        console.log('Canvas dimensions:', this.canvas.width, 'x', this.canvas.height);
+        console.log('Cell dimensions:', cellWidth, 'x', cellHeight);
         
         // Get current game statistics
         const currentScore = parseInt(this.elements.currentScore.textContent) || 0;
@@ -869,8 +1042,14 @@ class TetrisApp {
                     // Use colorful pieces
                     const colorIndex = (row + col) % this.tetrisPieceColors.length;
                     this.ctx.fillStyle = this.tetrisPieceColors[colorIndex];
-                    this.ctx.fillRect(col * cellWidth + 1, row * cellHeight + 1, 
-                                     cellWidth - 2, cellHeight - 2);
+                    
+                    // Fill the entire cell area
+                    this.ctx.fillRect(
+                        col * cellWidth + 1, 
+                        row * cellHeight + 1, 
+                        cellWidth - 2, 
+                        cellHeight - 2
+                    );
                 }
             }
         }
@@ -884,39 +1063,47 @@ class TetrisApp {
                 // Use colorful pieces
                 const colorIndex = (row + col + i) % this.tetrisPieceColors.length;
                 this.ctx.fillStyle = this.tetrisPieceColors[colorIndex];
-                this.ctx.fillRect(col * cellWidth + 1, row * cellHeight + 1, 
-                                 cellWidth - 2, cellHeight - 2);
+                this.ctx.fillRect(
+                    col * cellWidth + 1, 
+                    row * cellHeight + 1, 
+                    cellWidth - 2, 
+                    cellHeight - 2
+                );
             }
         }
         
         // Add current falling piece in upper area if game is active
         if (currentSteps > 0) {
-            this.ctx.fillStyle = '#888'; // Gray for falling piece
-            const pieceRow = Math.min(Math.floor(currentSteps / 10) % 8, 5); // Top area
-            const pieceCol = Math.floor(Math.random() * 7); // Allow for piece width
+            // Draw a simple T-piece pattern for active gameplay indication
+            const startRow = Math.min(Math.floor(currentSteps / 10) % 8, 5); // Top area
+            const startCol = Math.floor(Math.random() * 8); // Allow space for 3-wide piece
             
-            // Draw a simple tetris piece shape (T-piece)
-            const pieceShape = [
-                [0, 1, 0],
-                [1, 1, 1]
+            this.ctx.fillStyle = this.tetrisPieceColors[0]; // Bright color for current piece
+            
+            // T-piece pattern: center piece and three pieces across top
+            const tPiece = [
+                [startRow, startCol + 1],     // Center
+                [startRow + 1, startCol],     // Left
+                [startRow + 1, startCol + 1], // Center bottom
+                [startRow + 1, startCol + 2]  // Right
             ];
             
-            for (let i = 0; i < pieceShape.length; i++) {
-                for (let j = 0; j < pieceShape[i].length; j++) {
-                    if (pieceShape[i][j]) {
-                        const drawRow = pieceRow + i;
-                        const drawCol = pieceCol + j;
-                        if (drawRow >= 0 && drawRow < 20 && drawCol >= 0 && drawCol < 10) {
-                            this.ctx.fillRect(drawCol * cellWidth + 1, 
-                                             drawRow * cellHeight + 1, 
-                                             cellWidth - 2, cellHeight - 2);
-                        }
-                    }
+            tPiece.forEach(([row, col]) => {
+                if (row >= 0 && row < 20 && col >= 0 && col < 10) {
+                    this.ctx.fillRect(
+                        col * cellWidth + 1,
+                        row * cellHeight + 1,
+                        cellWidth - 2,
+                        cellHeight - 2
+                    );
                 }
-            }
+            });
         }
+        
+        // Draw grid overlay
+        this.drawGrid();
     }
-    
+
     drawGrid() {
         this.ctx.strokeStyle = '#333';
         this.ctx.lineWidth = 1;

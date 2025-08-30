@@ -474,7 +474,13 @@ async def websocket_play_once(websocket: WebSocket, seed: Optional[int] = None, 
             await asyncio.sleep(1.0 / max(config.stream_fps - 2, 1))
             
             # Get best placement using the loaded policy
-            best_col, best_rotation, _ = get_best_placement(env, policy_weights)
+            try:
+                best_col, best_rotation, _ = get_best_placement(env, policy_weights)
+                print(f"Step {step_count}: best placement col={best_col}, rotation={best_rotation}")
+            except Exception as e:
+                print(f"Error getting best placement at step {step_count}: {e}")
+                # Use fallback placement
+                best_col, best_rotation = 0, 0
             
             # Execute placement
             success = execute_placement(env, best_col, best_rotation)
@@ -485,6 +491,8 @@ async def websocket_play_once(websocket: WebSocket, seed: Optional[int] = None, 
                 
             step_count += 1
             
+            print(f"After placement: score={env.score}, lines={env.lines_cleared}, game_over={env.game_over}")
+            
             # Send frame update
             frame = env.render(mode="rgb_array")
             frame_data = StreamFrame(
@@ -494,10 +502,12 @@ async def websocket_play_once(websocket: WebSocket, seed: Optional[int] = None, 
                 step=int(step_count),
                 done=bool(env.game_over)
             )
-            await websocket.send_json({
+            message_data = {
                 **frame_data.model_dump(),
                 "placement": {"col": int(best_col), "rotation": int(best_rotation)}
-            })
+            }
+            print(f"Sending WebSocket message: score={message_data.get('score')}, lines={message_data.get('lines')}, step={message_data.get('step')}")
+            await websocket.send_json(message_data)
             
             # Spawn new piece if game continues
             if not env.game_over:

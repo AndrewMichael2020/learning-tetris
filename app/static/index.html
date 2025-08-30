@@ -10,7 +10,7 @@
     <div class="container">
         <header>
             <h1>Reinforcement Learning Tetris</h1>
-            <p>AI agents learn to play Tetris using CEM and REINFORCE algorithms</p>
+            <p>Tetris training camp: Use CEM, Reinforced, Nurse Dictator, Nurse Gossip, Coffee Break, or Night Shift Ant March, to train my AI pet</p>
         </header>
         
         <div class="main-content">
@@ -97,6 +97,11 @@
                         <label>Best Score:</label>
                         <span id="bestScore">0</span>
                     </div>
+                    <div class="result-row">
+                        <label>Max Score:</label>
+                        <span id="maxScore">0</span>
+                    </div>
+                    <button id="clearResultsBtn" class="btn btn-secondary" style="margin-top: 10px; width: 100%;">Clear Results</button>
                 </div>
             </div>
             
@@ -124,6 +129,67 @@
                             <option value="anneal">Simulated Annealing (Coffee Break)</option>
                             <option value="aco">Ant Colony (Night Shift Ant March)</option>
                         </select>
+                    </div>
+                    
+                    <!-- Algorithm-specific play controls -->
+                    <div id="playGreedyControls" style="display: none;">
+                        <h4>Greedy Parameters</h4>
+                        <div class="form-row">
+                            <label for="play_greedy_w_holes">Holes Weight:</label>
+                            <input type="number" id="play_greedy_w_holes" value="8.0" step="0.1" min="0">
+                        </div>
+                        <div class="form-row">
+                            <label for="play_greedy_w_max_height">Max Height Weight:</label>
+                            <input type="number" id="play_greedy_w_max_height" value="1.0" step="0.1" min="0">
+                        </div>
+                        <div class="form-row">
+                            <label for="play_greedy_w_bumpiness">Bumpiness Weight:</label>
+                            <input type="number" id="play_greedy_w_bumpiness" value="0.5" step="0.1" min="0">
+                        </div>
+                    </div>
+                    
+                    <div id="playTabuControls" style="display: none;">
+                        <h4>Tabu Search Parameters</h4>
+                        <div class="form-row">
+                            <label for="play_tabu_tenure">Tabu Tenure:</label>
+                            <input type="number" id="play_tabu_tenure" value="7" min="3" max="15">
+                        </div>
+                        <div class="form-row">
+                            <label for="play_tabu_neighborhood_k">Neighborhood Size:</label>
+                            <input type="number" id="play_tabu_neighborhood_k" value="10" min="3" max="20">
+                        </div>
+                        <div class="form-row">
+                            <label for="play_tabu_aspiration">Aspiration Criteria:</label>
+                            <input type="checkbox" id="play_tabu_aspiration" checked>
+                        </div>
+                    </div>
+                    
+                    <div id="playAnnealControls" style="display: none;">
+                        <h4>Simulated Annealing Parameters</h4>
+                        <div class="form-row">
+                            <label for="play_anneal_T0">Initial Temperature:</label>
+                            <input type="number" id="play_anneal_T0" placeholder="Auto" step="0.1" min="0.1">
+                        </div>
+                        <div class="form-row">
+                            <label for="play_anneal_alpha">Cooling Rate:</label>
+                            <input type="number" id="play_anneal_alpha" value="0.99" step="0.01" min="0.5" max="0.999">
+                        </div>
+                    </div>
+                    
+                    <div id="playAcoControls" style="display: none;">
+                        <h4>Ant Colony Parameters</h4>
+                        <div class="form-row">
+                            <label for="play_aco_alpha">Pheromone Influence (α):</label>
+                            <input type="number" id="play_aco_alpha" value="1.0" step="0.1" min="0.1" max="5">
+                        </div>
+                        <div class="form-row">
+                            <label for="play_aco_beta">Heuristic Influence (β):</label>
+                            <input type="number" id="play_aco_beta" value="2.0" step="0.1" min="0.1" max="5">
+                        </div>
+                        <div class="form-row">
+                            <label for="play_aco_ants">Number of Ants:</label>
+                            <input type="number" id="play_aco_ants" value="20" min="5" max="50">
+                        </div>
                     </div>
                 </div>
                 
@@ -274,15 +340,6 @@
                         </div>
                     </div>
                 </div>
-            </div>
-        </div>
-        
-        <!-- Status Section -->
-        <div class="status-section">
-            <h3>System Status</h3>
-            <div id="systemStatus">
-                <div>Policy: <span id="policyStatus">Loading...</span></div>
-                <div>Training: <span id="trainingStatus">Disabled</span></div>
             </div>
         </div>
         
