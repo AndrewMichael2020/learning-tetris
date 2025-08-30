@@ -20,13 +20,21 @@ class MockTetrisEnv:
         self.lines_cleared = 0
         self.game_over = False
         self.current_piece = None
+        self.current_piece_name = 'T'
+        self.current_rotation = 0
+        self.current_pos = [0, width // 2 - 2]
         self.step_count = 0
         
     def reset(self, seed=None):
+        from rl.tetris_env import TETRIS_PIECES
         self.board = np.zeros((self.height, self.width), dtype=np.int8)
         self.score = 0
         self.lines_cleared = 0
         self.game_over = False
+        self.current_piece_name = 'T'
+        self.current_rotation = 0
+        self.current_pos = [0, self.width // 2 - 2]
+        self.current_piece = TETRIS_PIECES[self.current_piece_name][self.current_rotation]
         self.step_count = 0
         return self.board.copy()
     
@@ -36,6 +44,28 @@ class MockTetrisEnv:
         if self.step_count > 10:
             self.game_over = True
         return not self.game_over
+        
+    def _rotate_piece(self):
+        # Mock rotation - always succeeds
+        from rl.tetris_env import TETRIS_PIECES
+        self.current_rotation = (self.current_rotation + 1) % 4
+        self.current_piece = TETRIS_PIECES[self.current_piece_name][self.current_rotation]
+        return True
+        
+    def _move_piece(self, dr, dc):
+        # Mock movement - always succeeds
+        self.current_pos[0] += dr
+        self.current_pos[1] += dc
+        return True
+        
+    def _drop_piece(self):
+        # Mock drop - adds some score and deterministically ends the game
+        self.score += 10
+        self.lines_cleared += (self.step_count % 3)  # Deterministic pattern
+        self.step_count += 1
+        if self.step_count > 10:
+            self.game_over = True
+        return self._spawn_piece()
 
 
 def create_mock_env_factory():

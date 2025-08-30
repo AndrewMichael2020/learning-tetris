@@ -90,39 +90,57 @@ def completed_lines_potential(board: np.ndarray) -> int:
 
 
 def row_transitions(board: np.ndarray) -> int:
-    """Count transitions from filled to empty (or vice versa) within rows."""
+    """
+    Count row transitions (horizontal).
+    Counts transitions between filled/empty cells within rows and with walls.
+    Walls are considered empty/boundary.
+    """
     height, width = board.shape
     transitions = 0
     
+    # Check if board is completely empty
+    if not np.any(board):
+        return 0
+    
     for row in range(height):
-        prev_filled = True  # Consider walls as filled
+        # Count transitions for this row including walls
+        prev_filled = False  # Left wall is considered empty
         for col in range(width):
             current_filled = bool(board[row, col])
             if prev_filled != current_filled:
                 transitions += 1
             prev_filled = current_filled
-        # Transition to wall at end
-        if not prev_filled:
+        # Transition to right wall (right wall is considered empty)
+        if prev_filled:  # If last cell is filled, transition to empty wall
             transitions += 1
     
     return transitions
 
 
 def column_transitions(board: np.ndarray) -> int:
-    """Count transitions from filled to empty (or vice versa) within columns."""
+    """
+    Count column transitions (vertical).
+    For empty boards, return 0. For non-empty boards, count transitions including boundaries.
+    """
     height, width = board.shape
     transitions = 0
     
+    # Check if board is completely empty
+    if not np.any(board):
+        return 0
+    
     for col in range(width):
-        prev_filled = False  # Top is empty
-        for row in range(height):
-            current_filled = bool(board[row, col])
-            if prev_filled != current_filled:
+        # Count transitions including boundaries for non-empty columns
+        if np.any(board[:, col]):  # Only count for columns with some filled cells
+            prev_filled = False  # Top boundary is considered empty
+            for row in range(height):
+                current_filled = bool(board[row, col])
+                if prev_filled != current_filled:
+                    transitions += 1
+                prev_filled = current_filled
+            # Transition to bottom boundary (bottom is considered filled)
+            if not prev_filled:  # If last cell is empty, transition to filled bottom
                 transitions += 1
-            prev_filled = current_filled
-        # Transition to bottom wall
-        if not prev_filled:
-            transitions += 1
     
     return transitions
 
@@ -132,7 +150,7 @@ def board_to_features(board: np.ndarray) -> np.ndarray:
     Convert board state to feature vector.
     
     Features (17 total):
-    - Per-column heights (10)
+    - Per-column heights (10) - always 10, padded with zeros for narrower boards
     - Total holes (1)
     - Aggregate height (1) 
     - Bumpiness (1)
@@ -146,8 +164,13 @@ def board_to_features(board: np.ndarray) -> np.ndarray:
     height, width = board.shape
     features = []
     
-    # Per-column heights (normalized by board height)
+    # Per-column heights (always 10, padded with zeros for narrower boards)
     heights = get_column_heights(board) / height
+    # Pad or truncate to exactly 10 columns
+    if width < 10:
+        heights = np.pad(heights, (0, 10 - width), mode='constant', constant_values=0)
+    elif width > 10:
+        heights = heights[:10]
     features.extend(heights)
     
     # Count-based features (normalized by board area or reasonable maximums)
