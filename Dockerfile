@@ -23,7 +23,7 @@ RUN mkdir -p policies
 
 # Environment variables
 ENV PORT=8080
-ENV TRAIN_ENABLED=false
+ENV TRAIN_ENABLED=true
 
 # Expose port
 EXPOSE 8080
