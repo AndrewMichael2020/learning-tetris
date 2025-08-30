@@ -1,5 +1,10 @@
 <!DOCTYPE html>
-<html lang="en">
+<htm                <div class="button-group">
+                    <button id="streamBtn" class="btn btn-primary">Stream Agent</button>
+                    <button id="playOnceBtn" class="btn btn-secondary">Play Once</button>
+                    <button id="playMultipleBtn" class="btn btn-info">Play Multiple</button>
+                    <button id="quickTrainBtn" class="btn btn-warning" disabled>Quick Train</button>
+                </div>g="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -21,6 +26,7 @@
                 <div class="game-controls">
                     <button id="streamBtn" class="btn btn-primary">Stream Agent</button>
                     <button id="playOnceBtn" class="btn btn-secondary">Play Once</button>
+                    <button id="playMultipleBtn" class="btn btn-info">Play Multiple</button>
                     <button id="quickTrainBtn" class="btn btn-warning" disabled>Quick Train</button>
                 </div>
                 
@@ -38,6 +44,12 @@
                             <span class="instruction-icon btn-secondary-icon">●</span>
                             <div class="instruction-text">
                                 <strong>Play Once:</strong> Run a single complete game episode and view final statistics
+                            </div>
+                        </div>
+                        <div class="instruction-item">
+                            <span class="instruction-icon btn-info-icon">▶▶</span>
+                            <div class="instruction-text">
+                                <strong>Play Multiple:</strong> Run multiple episodes using the Episodes setting and view aggregated statistics
                             </div>
                         </div>
                         <div class="instruction-item">
