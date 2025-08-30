@@ -83,18 +83,73 @@ class TetrisApp {
         this.elements.trainAlgo.addEventListener('change', () => this.updateTrainingControls());
     }
     
+    getAlgorithmDisplayName(algo) {
+        const names = {
+            'greedy': 'Greedy Heuristic (Nurse Dictator)',
+            'tabu': 'Tabu Search (Nurse Gossip)',
+            'anneal': 'Simulated Annealing (Coffee Break)',
+            'aco': 'Ant Colony Optimization (Night Shift Ant March)'
+        };
+        return names[algo] || algo.toUpperCase();
+    }
+    
+    collectAlgorithmParams(algo) {
+        const params = {};
+        
+        if (algo === 'greedy') {
+            params.w_holes = parseFloat(document.getElementById('greedy_w_holes').value);
+            params.w_max_height = parseFloat(document.getElementById('greedy_w_max_height').value);
+            params.w_bumpiness = parseFloat(document.getElementById('greedy_w_bumpiness').value);
+        } else if (algo === 'tabu') {
+            params.tenure = parseInt(document.getElementById('tabu_tenure').value);
+            params.neighborhood_top_k = parseInt(document.getElementById('tabu_neighborhood_k').value);
+            params.aspiration = document.getElementById('tabu_aspiration').checked;
+            params.w_holes = parseFloat(document.getElementById('tabu_w_holes').value);
+            params.w_max_height = parseFloat(document.getElementById('tabu_w_max_height').value);
+        } else if (algo === 'anneal') {
+            const T0_input = document.getElementById('anneal_T0').value;
+            params.T0 = T0_input ? parseFloat(T0_input) : null;
+            params.alpha = parseFloat(document.getElementById('anneal_alpha').value);
+            params.proposal_top_k = parseInt(document.getElementById('anneal_proposal_k').value);
+            params.w_holes = parseFloat(document.getElementById('anneal_w_holes').value);
+            params.w_max_height = parseFloat(document.getElementById('anneal_w_max_height').value);
+        } else if (algo === 'aco') {
+            params.alpha = parseFloat(document.getElementById('aco_alpha').value);
+            params.beta = parseFloat(document.getElementById('aco_beta').value);
+            params.rho = parseFloat(document.getElementById('aco_rho').value);
+            params.ants = parseInt(document.getElementById('aco_ants').value);
+            params.elite = parseInt(document.getElementById('aco_elite').value);
+            params.w_holes = parseFloat(document.getElementById('aco_w_holes').value);
+            params.w_max_height = parseFloat(document.getElementById('aco_w_max_height').value);
+        }
+        
+        return params;
+    }
+    
     updateTrainingControls() {
         const algo = this.elements.trainAlgo.value;
-        const cemControls = document.getElementById('cemControls');
-        const reinforceControls = document.getElementById('reinforceControls');
         
-        if (algo === 'cem') {
-            cemControls.style.display = 'block';
-            reinforceControls.style.display = 'none';
-        } else {
-            cemControls.style.display = 'none';
-            reinforceControls.style.display = 'block';
+        // Hide all control sections first
+        const controlSections = [
+            'cemControls', 'reinforceControls', 'greedyControls', 
+            'tabuControls', 'annealControls', 'acoControls'
+        ];
+        
+        controlSections.forEach(sectionId => {
+            const section = document.getElementById(sectionId);
+            if (section) {
+                section.style.display = 'none';
+            }
+        });
+        
+        // Show the appropriate control section
+        const activeSection = algo + 'Controls';
+        const activeElement = document.getElementById(activeSection);
+        if (activeElement) {
+            activeElement.style.display = 'block';
         }
+        
+        this.log(`Switched to ${algo.toUpperCase()} algorithm settings`, 'info');
     }
     
     async checkHealth() {
@@ -361,9 +416,12 @@ class TetrisApp {
             requestBody.generations = parseInt(this.elements.generations.value);
             requestBody.population_size = parseInt(this.elements.populationSize.value);
             requestBody.episodes_per_candidate = 2; // Fixed for quick training
-        } else {
+        } else if (algo === 'reinforce') {
             requestBody.episodes = parseInt(this.elements.trainEpisodes.value);
             requestBody.learning_rate = parseFloat(this.elements.learningRate.value);
+        } else {
+            // New algorithms - collect their specific parameters
+            requestBody.params = this.collectAlgorithmParams(algo);
         }
         
         this.elements.quickTrainBtn.disabled = true;
@@ -373,8 +431,10 @@ class TetrisApp {
         // Show initial training info in Activity Log
         if (algo === 'cem') {
             this.log(`Starting CEM evolution: ${requestBody.generations} generations, ${requestBody.population_size} population`, 'info');
-        } else {
+        } else if (algo === 'reinforce') {
             this.log(`Starting REINFORCE training: ${requestBody.episodes} episodes, LR=${requestBody.learning_rate}`, 'info');
+        } else {
+            this.log(`Configuring ${this.getAlgorithmDisplayName(algo)} with optimized parameters`, 'info');
         }
         
         // Show training visualization
@@ -469,7 +529,16 @@ class TetrisApp {
     simulateTrainingProgress(algo, requestBody) {
         // Simulate training progress updates in the Activity Log
         let currentStep = 0;
-        const totalSteps = algo === 'cem' ? requestBody.generations : Math.min(requestBody.episodes, 20); // Limit REINFORCE logs
+        let totalSteps;
+        
+        if (algo === 'cem') {
+            totalSteps = requestBody.generations;
+        } else if (algo === 'reinforce') {
+            totalSteps = Math.min(requestBody.episodes, 20); // Limit REINFORCE logs
+        } else {
+            // New algorithms complete quickly
+            totalSteps = 3;
+        }
         
         const progressInterval = setInterval(() => {
             if (this.elements.gameStatus.textContent !== 'Training...') {
@@ -488,7 +557,7 @@ class TetrisApp {
                 
                 this.log(`Gen ${generation}/${totalSteps}: Best=${bestFitness}.0, Mean=${meanFitness}.0, Std=${stdFitness}.0`, 'info');
                 
-            } else {
+            } else if (algo === 'reinforce') {
                 // Simulate REINFORCE episode progress (less frequent updates)
                 if (currentStep % 5 === 0 || currentStep <= 3) { // Log every 5th episode + first 3
                     const episode = currentStep * 5; // Scale up episode numbers
@@ -497,13 +566,23 @@ class TetrisApp {
                     
                     this.log(`Episode ${episode}/${requestBody.episodes}: Reward=${reward}.0, Baseline=${baseline}.0`, 'info');
                 }
+            } else {
+                // New algorithms - show configuration and optimization steps
+                if (currentStep === 1) {
+                    this.log(`Initializing ${this.getAlgorithmDisplayName(algo)}...`, 'info');
+                } else if (currentStep === 2) {
+                    const paramCount = Object.keys(requestBody.params || {}).length;
+                    this.log(`Optimizing ${paramCount} parameters for Tetris gameplay...`, 'info');
+                } else if (currentStep === 3) {
+                    this.log(`Algorithm configured and ready for gameplay!`, 'success');
+                }
             }
             
             if (currentStep >= totalSteps) {
                 clearInterval(progressInterval);
             }
             
-        }, algo === 'cem' ? 1000 : 800); // CEM: 1 second per generation, REINFORCE: 0.8 seconds per update
+        }, algo === 'cem' ? 1000 : (algo === 'reinforce' ? 800 : 500)); // New algorithms are faster
     }
     
     toggleStream() {
