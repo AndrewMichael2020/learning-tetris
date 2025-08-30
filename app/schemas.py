@@ -9,7 +9,7 @@ class PlayRequest(BaseModel):
     """Request schema for /api/play endpoint."""
     episodes: int = Field(default=1, ge=1, le=100, description="Number of episodes to play")
     seed: Optional[int] = Field(default=None, description="Random seed for reproducibility")
-    algo: Literal["cem", "reinforce"] = Field(default="cem", description="Algorithm to use")
+    algo: Literal["cem", "reinforce", "greedy", "tabu", "anneal", "aco"] = Field(default="cem", description="Algorithm to use")
 
 
 class PlayResponse(BaseModel):
@@ -24,7 +24,7 @@ class PlayResponse(BaseModel):
 
 class TrainRequest(BaseModel):
     """Request schema for /api/train endpoint."""
-    algo: Literal["cem", "reinforce"] = Field(default="cem", description="Algorithm to train")
+    algo: Literal["cem", "reinforce", "greedy", "tabu", "anneal", "aco"] = Field(default="cem", description="Algorithm to train")
     seed: int = Field(default=42, description="Random seed")
     
     # CEM specific parameters
@@ -35,6 +35,9 @@ class TrainRequest(BaseModel):
     # REINFORCE specific parameters  
     episodes: Optional[int] = Field(default=200, ge=50, le=500, description="Episodes for REINFORCE")
     learning_rate: Optional[float] = Field(default=0.01, gt=0, le=1, description="Learning rate for REINFORCE")
+    
+    # New algorithm parameters (will be validated by specific schemas)
+    params: Optional[Dict[str, Any]] = Field(default=None, description="Algorithm-specific parameters")
 
 
 class TrainResponse(BaseModel):
