@@ -6,6 +6,7 @@ import base64
 import io
 import json
 import time
+from contextlib import asynccontextmanager
 from typing import Optional, Dict, Any
 import numpy as np
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
@@ -23,9 +24,6 @@ from rl.afterstate import get_best_placement, execute_placement
 from rl.cem_agent import evolve as cem_evolve
 from rl.reinforce_agent import train as reinforce_train
 
-
-# Initialize FastAPI app
-app = FastAPI(title="RL Tetris", description="Reinforcement Learning Tetris Web App")
 
 # Global state
 policy_weights: Optional[np.ndarray] = None
@@ -76,11 +74,21 @@ def frame_to_base64(frame: np.ndarray) -> str:
     return base64.b64encode(mock_png_data).decode('utf-8')
 
 
-@app.on_event("startup")
-async def startup_event():
-    """Load policy on startup."""
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Manage application lifespan."""
+    # Startup
     load_policy()
+    yield
+    # Shutdown (nothing to cleanup)
 
+
+# Initialize FastAPI app
+app = FastAPI(
+    title="RL Tetris", 
+    description="Reinforcement Learning Tetris Web App",
+    lifespan=lifespan
+)
 
 # Serve static files
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
@@ -241,9 +249,12 @@ async def websocket_stream(websocket: WebSocket):
             score=float(env.score),
             step=step_count
         )
-        await websocket.send_json(frame_data.dict())
+        await websocket.send_json(frame_data.model_dump())
         
         while not env.game_over and step_count < max_steps:
+            # Control FPS (sleep before processing to ensure consistent timing)
+            await asyncio.sleep(1.0 / config.stream_fps)
+            
             # Get best placement
             best_col, best_rotation, _ = get_best_placement(env, policy_weights)
             
@@ -264,10 +275,7 @@ async def websocket_stream(websocket: WebSocket):
                 step=step_count,
                 done=env.game_over
             )
-            await websocket.send_json(frame_data.dict())
-            
-            # Control FPS
-            await asyncio.sleep(1.0 / config.stream_fps)
+            await websocket.send_json(frame_data.model_dump())
             
             # Spawn new piece if game continues
             if not env.game_over:
@@ -276,7 +284,7 @@ async def websocket_stream(websocket: WebSocket):
         # Send final frame
         if not env.game_over:
             frame_data.done = True
-            await websocket.send_json(frame_data.dict())
+            await websocket.send_json(frame_data.model_dump())
             
     except WebSocketDisconnect:
         pass

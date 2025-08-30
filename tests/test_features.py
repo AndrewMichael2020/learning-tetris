@@ -218,7 +218,7 @@ def test_row_transitions():
     # Test all filled row
     full_board = np.ones((20, 10), dtype=np.int8)
     full_transitions = row_transitions(full_board)
-    assert full_transitions == 2  # Wall-to-filled at start and filled-to-wall at end
+    assert full_transitions == 40  # 2 transitions per row * 20 rows
 
 
 def test_column_transitions():

@@ -228,22 +228,24 @@ def test_env_7_bag_system():
     env = TetrisEnv()
     env.reset(seed=42)
     
+    # Reset the bag system for clean testing
+    env.piece_bag = []
+    env.bag_index = 0
+
     # Generate 14 pieces (2 full bags)
     pieces = []
     for _ in range(14):
         piece = env._get_next_piece()
         pieces.append(piece)
-    
+
     # First 7 pieces should contain all piece types
     first_bag = set(pieces[:7])
     expected_pieces = {'I', 'O', 'T', 'S', 'Z', 'J', 'L'}
     assert first_bag == expected_pieces
-    
+
     # Second bag should also contain all piece types
     second_bag = set(pieces[7:14])
     assert second_bag == expected_pieces
-
-
 def test_env_feature_info():
     """Test that info dict contains expected features."""
     env = TetrisEnv()
