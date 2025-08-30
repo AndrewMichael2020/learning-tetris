@@ -230,8 +230,8 @@ async def play_episodes(request: PlayRequest):
                             best_col, best_rotation = agent.get_action(env)
                 except Exception as e:
                     print(f"Error getting best placement in play: {e}")
-                    # Use fallback placement
-                    best_col, best_rotation = 0, 0
+                    # Use center fallback placement instead of left-biased
+                    best_col, best_rotation = 4, 0
                 
                 # Execute placement
                 success = execute_placement(env, best_col, best_rotation)
@@ -425,8 +425,8 @@ async def websocket_stream(websocket: WebSocket, episodes: int = 1, seed: Option
                             best_col, best_rotation = agent.get_action(env)
                 except Exception as e:
                     print(f"Error getting best placement in stream: {e}")
-                    # Use fallback placement
-                    best_col, best_rotation = 0, 0
+                    # Use center fallback placement instead of left-biased
+                    best_col, best_rotation = 4, 0
                 
                 # Execute placement
                 success = execute_placement(env, best_col, best_rotation)
@@ -549,8 +549,8 @@ async def websocket_play_once(websocket: WebSocket, seed: Optional[int] = None, 
                 print(f"Step {step_count}: best placement col={best_col}, rotation={best_rotation}")
             except Exception as e:
                 print(f"Error getting best placement at step {step_count}: {e}")
-                # Use fallback placement
-                best_col, best_rotation = 0, 0
+                # Use center fallback placement instead of left-biased
+                best_col, best_rotation = 4, 0
             
             # Execute placement
             success = execute_placement(env, best_col, best_rotation)

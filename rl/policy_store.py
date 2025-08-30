@@ -89,23 +89,38 @@ def load_policy(path: str) -> Dict[str, np.ndarray]:
 
 def create_random_policy(feature_dim: int, seed: Optional[int] = None) -> Dict[str, np.ndarray]:
     """
-    Create a random linear policy.
+    Create a balanced heuristic policy instead of random.
     
     Args:
         feature_dim: Dimension of feature vector
-        seed: Random seed
+        seed: Random seed (for compatibility, but we use heuristic weights)
         
     Returns:
-        Dictionary with random policy weights
+        Dictionary with balanced heuristic policy weights
     """
-    rng = np.random.default_rng(seed)
+    # Use balanced heuristic weights instead of random
+    # This creates unbiased gameplay with good Tetris strategy
+    if feature_dim == 17:
+        weights = np.array([
+            # Column heights - all zero (no bias toward any column)
+            0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+            # Strategic feature weights
+            -0.8,  # holes (very bad, minimize)
+            -0.2,  # agg_height (minimize total height)
+            -0.3,  # bumpiness (bad, creates holes)
+            -0.15, # wells (mildly bad)
+            -0.4,  # max_height (bad, minimize max height)
+            1.0,   # completed_lines (very good, maximize)
+            -0.1   # row_transitions (mildly bad)
+        ], dtype=np.float32)
+    else:
+        # Fallback to small random weights for other dimensions
+        rng = np.random.default_rng(seed)
+        weights = rng.normal(0, 0.05, size=feature_dim).astype(np.float32)
     
-    # Initialize weights with small random values
-    weights = {
-        'linear_weights': rng.normal(0, 0.1, size=feature_dim).astype(np.float32)
+    return {
+        'linear_weights': weights
     }
-    
-    return weights
 
 
 def ensure_policies_dir() -> str:
@@ -140,14 +155,15 @@ def load_or_create_policy(path: Optional[str] = None,
     try:
         return load_policy(path)
     except FileNotFoundError:
-        # Create random policy
+        # Create balanced heuristic policy
         policy = create_random_policy(feature_dim, seed)
         
         # Save it for future use
         metadata = {
-            'created': 'random',
+            'created': 'balanced_heuristic',
             'feature_dim': feature_dim,
-            'seed': seed or -1
+            'algorithm': 'heuristic',
+            'version': '1.0'
         }
         save_policy(policy, path, metadata)
         

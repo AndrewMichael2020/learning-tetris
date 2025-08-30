@@ -36,7 +36,7 @@ class GreedyAgent(Agent):
         actions, afterstates = enumerate_actions(env)
         
         if not actions:
-            return 0, 0  # Default action if no valid moves
+            return 4, 0  # Default to center column if no valid moves
         
         # Evaluate all afterstates
         costs = [score_afterstate(afterstate, **self.weights) 

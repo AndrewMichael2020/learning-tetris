@@ -95,7 +95,8 @@ def enumerate_actions(env):
         
     except ImportError:
         # Fallback for testing without full dependencies
-        return [(0, 0), (1, 0), (2, 0)], [None, None, None]
+        # Use center positions instead of left-biased defaults
+        return [(3, 0), (4, 0), (5, 0)], [None, None, None]
 
 
 def compute_cost_from_features(features: List[float], weights: Dict[str, float]) -> float:

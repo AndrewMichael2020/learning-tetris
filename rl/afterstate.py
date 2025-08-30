@@ -25,8 +25,26 @@ def enumerate_afterstates(env: TetrisEnv) -> List[Tuple[np.ndarray, Dict[str, An
     for rotation in range(4):
         piece = TETRIS_PIECES[current_piece_name][rotation]
         
-        # Try all horizontal positions
-        for col in range(-3, env.width + 1):  # Allow piece to extend outside initially
+        # Try all horizontal positions - only valid board positions to avoid left bias
+        # Calculate actual piece width more accurately
+        piece_cols = set()
+        for i in range(4):
+            for j in range(4):
+                if piece[i, j]:
+                    piece_cols.add(j)
+        
+        if not piece_cols:
+            continue  # Empty piece, skip
+            
+        piece_left_offset = min(piece_cols)
+        piece_right_offset = max(piece_cols) 
+        piece_width = piece_right_offset - piece_left_offset + 1
+        
+        # Calculate valid column range - piece can be placed with its leftmost part at these positions
+        min_col = -piece_left_offset  # Allow piece to align its filled parts with board
+        max_col = env.width - piece_right_offset - 1
+        
+        for col in range(min_col, max_col + 1):
             
             # Find the lowest valid position for this placement
             valid_placement = False
@@ -52,7 +70,7 @@ def enumerate_afterstates(env: TetrisEnv) -> List[Tuple[np.ndarray, Dict[str, An
                             piece_bounds['min_col'] = min(piece_bounds['min_col'], board_col)
                             piece_bounds['max_col'] = max(piece_bounds['max_col'], board_col)
                             
-                            # Check boundaries
+                            # Check boundaries - must be completely within board
                             if board_col < 0 or board_col >= env.width:
                                 collision = True
                                 break
@@ -78,8 +96,8 @@ def enumerate_afterstates(env: TetrisEnv) -> List[Tuple[np.ndarray, Dict[str, An
                     if valid_placement:
                         break
             
-            # Skip if piece never found valid position or is completely outside
-            if not valid_placement or piece_bounds['min_col'] >= env.width or piece_bounds['max_col'] < 0:
+            # Skip if piece never found valid position
+            if not valid_placement:
                 continue
             
             # Create afterstate by simulating piece lock
@@ -143,7 +161,7 @@ def get_best_placement(env: TetrisEnv, weights: np.ndarray) -> Tuple[int, int, f
     afterstates = enumerate_afterstates(env)
     
     if not afterstates:
-        return 0, 0, float('-inf')
+        return 4, 0, float('-inf')  # Default to center column
     
     from .features import board_to_features
     
@@ -183,23 +201,33 @@ def execute_placement(env: TetrisEnv, target_col: int, target_rotation: int) -> 
     
     # Rotate to target rotation
     current_rotation = env.current_rotation
-    while current_rotation != target_rotation:
+    rotation_attempts = 0
+    max_rotation_attempts = 4  # Prevent infinite loops
+    
+    while current_rotation != target_rotation and rotation_attempts < max_rotation_attempts:
         if not env._rotate_piece():
             return False  # Rotation failed
         current_rotation = env.current_rotation
+        rotation_attempts += 1
     
-    # Move to target column
+    # Move to target column - improved movement logic
     current_col = env.current_pos[1]
+    movement_attempts = 0
+    max_movement_attempts = 20  # Prevent infinite loops
     
-    while current_col != target_col:
+    while current_col != target_col and movement_attempts < max_movement_attempts:
         if current_col < target_col:
             if not env._move_piece(0, 1):  # Move right
-                break
+                break  # Can't move right anymore
             current_col += 1
         else:
-            if not env._move_piece(0, -1):  # Move left
-                break
+            if not env._move_piece(0, -1):  # Move left  
+                break  # Can't move left anymore
             current_col -= 1
+        movement_attempts += 1
+    
+    # If we couldn't reach the exact target column, that's okay - 
+    # the piece will be placed at the closest valid position
     
     # Drop piece
     env._drop_piece()
