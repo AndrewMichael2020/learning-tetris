@@ -69,17 +69,25 @@ header p {
     color: var(--primary-color);
 }
 
-/* Game Canvas */
-#gameCanvas {
-    border: 2px solid var(--border-color);
-    border-radius: 5px;
-    display: block;
+/* Game Canvas Container */
+.canvas-container {
+    display: flex;
+    justify-content: center;
     margin: 0 auto 20px auto;
     background-color: #000;
+    border: 2px solid var(--border-color);
+    border-radius: 5px;
     width: 100%;
-    max-width: 300px;
+    max-width: 400px;
+}
+
+/* Game Canvas */
+#gameCanvas {
+    display: block;
+    background-color: #000;
+    width: 100%;
     height: auto;
-    aspect-ratio: 1/2; /* Maintain 1:2 aspect ratio for Tetris */
+    max-width: 400px;
 }
 
 .game-controls {

@@ -944,6 +944,10 @@ class TetrisApp {
         const imageData = this.offscreenCtx.getImageData(0, 0, this.offscreenCanvas.width, this.offscreenCanvas.height);
         const data = imageData.data;
         
+        // Calculate proper grid dimensions based on Tetris standard (10x20)
+        const gridCellWidth = this.offscreenCanvas.width / 10;
+        const gridCellHeight = this.offscreenCanvas.height / 20;
+        
         // Loop through pixels and colorize non-black pixels
         for (let i = 0; i < data.length; i += 4) {
             const r = data[i];
@@ -953,28 +957,31 @@ class TetrisApp {
             
             // If pixel is not black/transparent
             if (r > 30 || g > 30 || b > 30) {
-                // Calculate position in grid
+                // Calculate position in grid using proper cell dimensions
                 const pixelIndex = i / 4;
                 const x = pixelIndex % this.offscreenCanvas.width;
                 const y = Math.floor(pixelIndex / this.offscreenCanvas.width);
-                const gridX = Math.floor(x / (this.offscreenCanvas.width / 10));
-                const gridY = Math.floor(y / (this.offscreenCanvas.height / 20));
+                const gridX = Math.floor(x / gridCellWidth);   // Use calculated cell width
+                const gridY = Math.floor(y / gridCellHeight);  // Use calculated cell height
                 
-                // Select color based on grid position
-                const colorIndex = (gridX + gridY * 2) % this.tetrisPieceColors.length;
-                const color = this.tetrisPieceColors[colorIndex];
-                
-                // Convert hex color to RGB
-                const hexColor = color.substring(1);
-                const colorR = parseInt(hexColor.substr(0, 2), 16);
-                const colorG = parseInt(hexColor.substr(2, 2), 16);
-                const colorB = parseInt(hexColor.substr(4, 2), 16);
-                
-                // Apply the color
-                data[i] = colorR;
-                data[i + 1] = colorG;
-                data[i + 2] = colorB;
-                data[i + 3] = 255; // Full opacity
+                // Ensure we don't go out of bounds
+                if (gridX >= 0 && gridX < 10 && gridY >= 0 && gridY < 20) {
+                    // Select color based on grid position
+                    const colorIndex = (gridX + gridY * 2) % this.tetrisPieceColors.length;
+                    const color = this.tetrisPieceColors[colorIndex];
+                    
+                    // Convert hex color to RGB
+                    const hexColor = color.substring(1);
+                    const colorR = parseInt(hexColor.substr(0, 2), 16);
+                    const colorG = parseInt(hexColor.substr(2, 2), 16);
+                    const colorB = parseInt(hexColor.substr(4, 2), 16);
+                    
+                    // Apply the color
+                    data[i] = colorR;
+                    data[i + 1] = colorG;
+                    data[i + 2] = colorB;
+                    data[i + 3] = 255; // Full opacity
+                }
             }
         }
         
@@ -1044,9 +1051,9 @@ class TetrisApp {
         this.ctx.fillStyle = '#000';
         this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
         
-        // Draw the full board using the current game statistics
-        const cellWidth = this.canvas.width / 10;
-        const cellHeight = this.canvas.height / 20;
+        // Draw the full board using the current game statistics - ensure pieces span full width
+        const cellWidth = this.canvas.width / 10;  // 10 columns for Tetris
+        const cellHeight = this.canvas.height / 20; // 20 rows for Tetris
         
         console.log('Canvas dimensions:', this.canvas.width, 'x', this.canvas.height);
         console.log('Cell dimensions:', cellWidth, 'x', cellHeight);
@@ -1065,46 +1072,46 @@ class TetrisApp {
         for (let row = 19; row >= 19 - baseFillRows && row >= 0; row--) {
             // Create partial line fills - not complete lines since they would be cleared
             const fillDensity = 0.4 + Math.random() * 0.4; // 40-80% filled
-            for (let col = 0; col < 10; col++) {
+            for (let col = 0; col < 10; col++) {  // ENSURE we go across all 10 columns
                 if (Math.random() < fillDensity) {
                     // Use colorful pieces
                     const colorIndex = (row + col) % this.tetrisPieceColors.length;
                     this.ctx.fillStyle = this.tetrisPieceColors[colorIndex];
                     
-                    // Fill the entire cell area
+                    // Fill the entire cell area - make sure we're using full width
                     this.ctx.fillRect(
-                        col * cellWidth + 1, 
-                        row * cellHeight + 1, 
-                        cellWidth - 2, 
-                        cellHeight - 2
+                        col * cellWidth, 
+                        row * cellHeight, 
+                        cellWidth, 
+                        cellHeight
                     );
                 }
             }
         }
         
-        // Add some scattered pieces in middle area based on score
+        // Add some scattered pieces in middle area based on score - across full width
         if (currentScore > 0) {
             const scatteredPieces = Math.min(Math.floor(currentScore / 50), 20);
             for (let i = 0; i < scatteredPieces; i++) {
                 const row = Math.floor(Math.random() * 10) + 5; // Middle area
-                const col = Math.floor(Math.random() * 10);
+                const col = Math.floor(Math.random() * 10);     // Full width (0-9)
                 // Use colorful pieces
                 const colorIndex = (row + col + i) % this.tetrisPieceColors.length;
                 this.ctx.fillStyle = this.tetrisPieceColors[colorIndex];
                 this.ctx.fillRect(
-                    col * cellWidth + 1, 
-                    row * cellHeight + 1, 
-                    cellWidth - 2, 
-                    cellHeight - 2
+                    col * cellWidth, 
+                    row * cellHeight, 
+                    cellWidth, 
+                    cellHeight
                 );
             }
         }
         
-        // Add current falling piece in upper area if game is active
+        // Add current falling piece in upper area if game is active - across full width
         if (currentSteps > 0) {
             // Draw a simple T-piece pattern for active gameplay indication
             const startRow = Math.min(Math.floor(currentSteps / 10) % 8, 5); // Top area
-            const startCol = Math.floor(Math.random() * 8); // Allow space for 3-wide piece
+            const startCol = Math.floor(Math.random() * 8); // Allow space for 3-wide piece (0-7)
             
             this.ctx.fillStyle = this.tetrisPieceColors[0]; // Bright color for current piece
             
@@ -1119,10 +1126,10 @@ class TetrisApp {
             tPiece.forEach(([row, col]) => {
                 if (row >= 0 && row < 20 && col >= 0 && col < 10) {
                     this.ctx.fillRect(
-                        col * cellWidth + 1,
-                        row * cellHeight + 1,
-                        cellWidth - 2,
-                        cellHeight - 2
+                        col * cellWidth,
+                        row * cellHeight,
+                        cellWidth,
+                        cellHeight
                     );
                 }
             });
@@ -1140,22 +1147,24 @@ class TetrisApp {
         ctx.strokeStyle = '#333';
         ctx.lineWidth = 1;
         
-        const cellWidth = canvas.width / 10;
-        const cellHeight = canvas.height / 20;
+        const cellWidth = canvas.width / 10;  // 10 columns
+        const cellHeight = canvas.height / 20; // 20 rows
         
-        // Draw vertical lines
+        // Draw vertical lines - ensure we cover full width
         for (let x = 0; x <= 10; x++) {
+            const xPos = x * cellWidth;
             ctx.beginPath();
-            ctx.moveTo(x * cellWidth, 0);
-            ctx.lineTo(x * cellWidth, canvas.height);
+            ctx.moveTo(xPos, 0);
+            ctx.lineTo(xPos, canvas.height);
             ctx.stroke();
         }
         
-        // Draw horizontal lines
+        // Draw horizontal lines - ensure we cover full height
         for (let y = 0; y <= 20; y++) {
+            const yPos = y * cellHeight;
             ctx.beginPath();
-            ctx.moveTo(0, y * cellHeight);
-            ctx.lineTo(canvas.width, y * cellHeight);
+            ctx.moveTo(0, yPos);
+            ctx.lineTo(canvas.width, yPos);
             ctx.stroke();
         }
     }
