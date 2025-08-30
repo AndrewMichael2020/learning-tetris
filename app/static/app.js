@@ -3,6 +3,13 @@ class TetrisApp {
     constructor() {
         this.canvas = document.getElementById('gameCanvas');
         this.ctx = this.canvas.getContext('2d');
+        
+        // Create offscreen canvas for double buffering to prevent flickering
+        this.offscreenCanvas = document.createElement('canvas');
+        this.offscreenCanvas.width = this.canvas.width;
+        this.offscreenCanvas.height = this.canvas.height;
+        this.offscreenCtx = this.offscreenCanvas.getContext('2d');
+        
         this.websocket = null;
         this.playOnceWebSocket = null;
         this.playMultipleWebSocket = null;
@@ -122,12 +129,12 @@ class TetrisApp {
         const totalEpisodes = this.episodeHistory.length;
         
         if (totalEpisodes === 0) {
-            // Reset all to 0
+            // Reset all to 0, but keep Max Score as theoretical maximum
             this.safeUpdateElement('totalEpisodes', '0');
             this.safeUpdateElement('avgScore', '0.0');
             this.safeUpdateElement('totalLines', '0');
             this.safeUpdateElement('bestScore', '0');
-            this.safeUpdateElement('maxScore', '0');
+            // Max Score stays static at 999999 (theoretical maximum)
             return;
         }
         
@@ -136,16 +143,15 @@ class TetrisApp {
         const totalLines = this.episodeHistory.reduce((sum, ep) => sum + ep.lines, 0);
         const avgScore = totalScore / totalEpisodes;
         const bestScore = Math.max(...this.episodeHistory.map(ep => ep.score));
-        const maxScore = bestScore; // Same as best score for our purposes
         
-        // Update displays
+        // Update displays (Max Score stays static as theoretical maximum)
         this.safeUpdateElement('totalEpisodes', totalEpisodes.toString());
         this.safeUpdateElement('avgScore', avgScore.toFixed(1));
         this.safeUpdateElement('totalLines', totalLines.toString());
         this.safeUpdateElement('bestScore', bestScore.toString());
-        this.safeUpdateElement('maxScore', maxScore.toString());
+        // Max Score is not updated - it remains as static theoretical maximum
         
-        console.log('Episode Results updated:', { totalEpisodes, avgScore: avgScore.toFixed(1), totalLines, bestScore, maxScore });
+        console.log('Episode Results updated:', { totalEpisodes, avgScore: avgScore.toFixed(1), totalLines, bestScore, maxScoreStatic: '999999' });
     }
     
     safeUpdateElement(id, value) {
@@ -865,9 +871,12 @@ class TetrisApp {
         img.onload = () => {
             console.log('PNG image loaded:', img.width, 'x', img.height);
             
-            // Clear canvas
-            this.ctx.fillStyle = '#000';
-            this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+            // Use offscreen canvas for double buffering to prevent flickering
+            const ctx = this.offscreenCtx;
+            
+            // Clear offscreen canvas
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, this.offscreenCanvas.width, this.offscreenCanvas.height);
             
             // Calculate proper scaling to maintain aspect ratio
             // Expected Tetris ratio is 10:20 (width:height) = 1:2
@@ -878,29 +887,33 @@ class TetrisApp {
             
             if (canvasRatio > expectedRatio) {
                 // Canvas is wider than expected - fit to height
-                drawHeight = this.canvas.height;
-                drawWidth = this.canvas.height * expectedRatio;
-                drawX = (this.canvas.width - drawWidth) / 2;
+                drawHeight = this.offscreenCanvas.height;
+                drawWidth = this.offscreenCanvas.height * expectedRatio;
+                drawX = (this.offscreenCanvas.width - drawWidth) / 2;
                 drawY = 0;
             } else {
                 // Canvas is taller than expected - fit to width  
-                drawWidth = this.canvas.width;
-                drawHeight = this.canvas.width / expectedRatio;
+                drawWidth = this.offscreenCanvas.width;
+                drawHeight = this.offscreenCanvas.width / expectedRatio;
                 drawX = 0;
-                drawY = (this.canvas.height - drawHeight) / 2;
+                drawY = (this.offscreenCanvas.height - drawHeight) / 2;
             }
             
             console.log('Drawing PNG at:', drawX, drawY, drawWidth, drawHeight);
             
             // Scale and draw the game board image maintaining aspect ratio
-            this.ctx.imageSmoothingEnabled = false; // Pixel-perfect scaling
-            this.ctx.drawImage(img, drawX, drawY, drawWidth, drawHeight);
+            ctx.imageSmoothingEnabled = false; // Pixel-perfect scaling
+            ctx.drawImage(img, drawX, drawY, drawWidth, drawHeight);
             
             // Add colorful overlay effect to the PNG - analyze pixels and recolor them
-            this.colorizeCanvas();
+            this.colorizeOffscreenCanvas();
             
-            // Draw grid overlay
-            this.drawGrid();
+            // Draw grid overlay on offscreen canvas
+            this.drawGridOnCanvas(ctx, this.offscreenCanvas);
+            
+            // Finally, copy the complete offscreen canvas to main canvas in one operation
+            this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+            this.ctx.drawImage(this.offscreenCanvas, 0, 0);
         };
         
         img.onerror = () => {
@@ -911,9 +924,9 @@ class TetrisApp {
         img.src = 'data:image/png;base64,' + pngData;
     }
     
-    colorizeCanvas() {
-        // Get current image data
-        const imageData = this.ctx.getImageData(0, 0, this.canvas.width, this.canvas.height);
+    colorizeOffscreenCanvas() {
+        // Get current image data from offscreen canvas
+        const imageData = this.offscreenCtx.getImageData(0, 0, this.offscreenCanvas.width, this.offscreenCanvas.height);
         const data = imageData.data;
         
         // Loop through pixels and colorize non-black pixels
@@ -927,10 +940,10 @@ class TetrisApp {
             if (r > 30 || g > 30 || b > 30) {
                 // Calculate position in grid
                 const pixelIndex = i / 4;
-                const x = pixelIndex % this.canvas.width;
-                const y = Math.floor(pixelIndex / this.canvas.width);
-                const gridX = Math.floor(x / (this.canvas.width / 10));
-                const gridY = Math.floor(y / (this.canvas.height / 20));
+                const x = pixelIndex % this.offscreenCanvas.width;
+                const y = Math.floor(pixelIndex / this.offscreenCanvas.width);
+                const gridX = Math.floor(x / (this.offscreenCanvas.width / 10));
+                const gridY = Math.floor(y / (this.offscreenCanvas.height / 20));
                 
                 // Select color based on grid position
                 const colorIndex = (gridX + gridY * 2) % this.tetrisPieceColors.length;
@@ -950,8 +963,8 @@ class TetrisApp {
             }
         }
         
-        // Put the modified image data back
-        this.ctx.putImageData(imageData, 0, 0);
+        // Put the modified image data back to offscreen canvas
+        this.offscreenCtx.putImageData(imageData, 0, 0);
     }
     
     renderJsonFrame(frameData) {
@@ -1105,26 +1118,30 @@ class TetrisApp {
     }
 
     drawGrid() {
-        this.ctx.strokeStyle = '#333';
-        this.ctx.lineWidth = 1;
+        this.drawGridOnCanvas(this.ctx, this.canvas);
+    }
+    
+    drawGridOnCanvas(ctx, canvas) {
+        ctx.strokeStyle = '#333';
+        ctx.lineWidth = 1;
         
-        const cellWidth = this.canvas.width / 10;
-        const cellHeight = this.canvas.height / 20;
+        const cellWidth = canvas.width / 10;
+        const cellHeight = canvas.height / 20;
         
         // Draw vertical lines
         for (let x = 0; x <= 10; x++) {
-            this.ctx.beginPath();
-            this.ctx.moveTo(x * cellWidth, 0);
-            this.ctx.lineTo(x * cellWidth, this.canvas.height);
-            this.ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(x * cellWidth, 0);
+            ctx.lineTo(x * cellWidth, canvas.height);
+            ctx.stroke();
         }
         
         // Draw horizontal lines
         for (let y = 0; y <= 20; y++) {
-            this.ctx.beginPath();
-            this.ctx.moveTo(0, y * cellHeight);
-            this.ctx.lineTo(this.canvas.width, y * cellHeight);
-            this.ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(0, y * cellHeight);
+            ctx.lineTo(canvas.width, y * cellHeight);
+            ctx.stroke();
         }
     }
     

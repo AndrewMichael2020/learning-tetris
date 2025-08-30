@@ -203,8 +203,24 @@ async def play_episodes(request: PlayRequest):
             max_steps = 1000
             
             while not env.game_over and steps < max_steps:
-                # Get best placement using loaded policy
-                best_col, best_rotation, _ = get_best_placement(env, policy_weights)
+                # Get best placement using correct algorithm
+                try:
+                    if request.algo in ["cem", "reinforce"]:
+                        # Use trained policy weights
+                        best_col, best_rotation, _ = get_best_placement(env, policy_weights)
+                    else:
+                        # Use specific algorithm agents
+                        from .agent_factory import make_agent
+                        agent = make_agent(request.algo)
+                        if agent is None:
+                            # Fallback to policy weights
+                            best_col, best_rotation, _ = get_best_placement(env, policy_weights)
+                        else:
+                            best_col, best_rotation = agent.get_action(env)
+                except Exception as e:
+                    print(f"Error getting best placement in play: {e}")
+                    # Use fallback placement
+                    best_col, best_rotation = 0, 0
                 
                 # Execute placement
                 success = execute_placement(env, best_col, best_rotation)
@@ -367,8 +383,24 @@ async def websocket_stream(websocket: WebSocket, episodes: int = 1, seed: Option
                 # Control FPS (sleep before processing to ensure consistent timing)
                 await asyncio.sleep(1.0 / config.stream_fps)
                 
-                # Get best placement using the loaded policy
-                best_col, best_rotation, _ = get_best_placement(env, policy_weights)
+                # Get best placement using the correct algorithm
+                try:
+                    if algo in ["cem", "reinforce"]:
+                        # Use trained policy weights
+                        best_col, best_rotation, _ = get_best_placement(env, policy_weights)
+                    else:
+                        # Use specific algorithm agents
+                        from .agent_factory import make_agent
+                        agent = make_agent(algo)
+                        if agent is None:
+                            # Fallback to policy weights
+                            best_col, best_rotation, _ = get_best_placement(env, policy_weights)
+                        else:
+                            best_col, best_rotation = agent.get_action(env)
+                except Exception as e:
+                    print(f"Error getting best placement in stream: {e}")
+                    # Use fallback placement
+                    best_col, best_rotation = 0, 0
                 
                 # Execute placement
                 success = execute_placement(env, best_col, best_rotation)
@@ -473,9 +505,21 @@ async def websocket_play_once(websocket: WebSocket, seed: Optional[int] = None, 
             # Slightly slower than stream for better visualization 
             await asyncio.sleep(1.0 / max(config.stream_fps - 2, 1))
             
-            # Get best placement using the loaded policy
+            # Get best placement using the correct algorithm
             try:
-                best_col, best_rotation, _ = get_best_placement(env, policy_weights)
+                if algo in ["cem", "reinforce"]:
+                    # Use trained policy weights
+                    best_col, best_rotation, _ = get_best_placement(env, policy_weights)
+                else:
+                    # Use specific algorithm agents
+                    from .agent_factory import make_agent
+                    agent = make_agent(algo)
+                    if agent is None:
+                        # Fallback to policy weights
+                        best_col, best_rotation, _ = get_best_placement(env, policy_weights)
+                    else:
+                        best_col, best_rotation = agent.get_action(env)
+                        
                 print(f"Step {step_count}: best placement col={best_col}, rotation={best_rotation}")
             except Exception as e:
                 print(f"Error getting best placement at step {step_count}: {e}")
