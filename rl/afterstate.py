@@ -139,12 +139,64 @@ def enumerate_afterstates(env: TetrisEnv) -> List[Tuple[np.ndarray, Dict[str, An
                 'rotation': rotation, 
                 'reward': reward,
                 'lines_cleared': len(lines_to_clear),
-                'final_row': final_row
+                'final_row': final_row,
+                'after_board': afterstate_board.copy()  # Include the computed afterstate
             }
             
             afterstates.append((afterstate_board, action_info))
     
     return afterstates
+
+
+def apply_afterstate(env: TetrisEnv, after_board: np.ndarray, action_info: Dict[str, Any]) -> bool:
+    """
+    Deterministic executor that sets env.board to after_board and updates game state.
+    This is the single source of truth for applying placements.
+    
+    Args:
+        env: Tetris environment to update
+        after_board: Pre-computed board state after placement and line clears
+        action_info: Action information with lines_cleared count
+        
+    Returns:
+        True (should never fail if afterstate was properly enumerated)
+    """
+    # Apply the pre-computed afterstate board
+    env.board = after_board.copy()
+    
+    # Update score based on lines cleared (if any)
+    lines_cleared = action_info.get('lines_cleared', 0)
+    if lines_cleared > 0:
+        # Standard Tetris scoring: 40, 100, 300, 1200 for 1,2,3,4 lines
+        line_scores = [0, 40, 100, 300, 1200]
+        env.score += line_scores[min(lines_cleared, 4)]
+        env.lines_cleared += lines_cleared
+    else:
+        # Small score for piece placement (soft drop points)
+        env.score += 1
+    
+    # Spawn next piece (single place that spawns)
+    if not env.game_over:
+        env._spawn_piece()
+        
+        # Check if spawned piece immediately causes game over
+        if env.current_piece is not None:
+            # Check if new piece collides with board
+            piece = env.current_piece
+            for i in range(4):
+                for j in range(4):
+                    if piece[i, j]:
+                        board_row = env.current_pos[0] + i
+                        board_col = env.current_pos[1] + j
+                        if (0 <= board_row < env.height and 
+                            0 <= board_col < env.width and 
+                            env.board[board_row, board_col]):
+                            env.game_over = True
+                            break
+                if env.game_over:
+                    break
+    
+    return True
 
 
 def get_best_placement(env: TetrisEnv, weights: np.ndarray) -> Tuple[int, int, float]:

@@ -25,6 +25,7 @@
                     <button id="playOnceBtn" class="btn btn-secondary">Play Once</button>
                     <button id="playMultipleBtn" class="btn btn-info">Play Multiple</button>
                     <button id="quickTrainBtn" class="btn btn-warning" disabled>Quick Train</button>
+                    <button id="resetTrainingBtn" class="btn btn-danger" onclick="testResetButton()">Reset Training</button>
                 </div>
                 
                 <!-- Button Instructions -->
@@ -374,5 +375,35 @@
     </div>
     
     <script src="/static/app.js"></script>
+    <script>
+        // Simple test function to debug reset button
+        function testResetButton() {
+            console.log('🔴 Reset button clicked via onclick!');
+            alert('Reset button works! Check console and activity log.');
+            
+            // Try to call the reset function if app exists
+            if (window.app && window.app.resetTraining) {
+                console.log('✅ Calling app.resetTraining()');
+                window.app.resetTraining();
+            } else if (window.app && window.app.log) {
+                console.log('⚠️ app exists but resetTraining missing');
+                window.app.log('🔴 Reset button clicked (direct call)', 'warning');
+            } else {
+                console.log('❌ window.app not found');
+                
+                // Try direct API call
+                fetch('/api/reset-training', { method: 'POST' })
+                    .then(response => response.json())
+                    .then(data => {
+                        console.log('✅ Direct API call success:', data);
+                        alert('Reset API call success: ' + data.message);
+                    })
+                    .catch(error => {
+                        console.log('❌ Direct API call failed:', error);
+                        alert('Reset API call failed: ' + error.message);
+                    });
+            }
+        }
+    </script>
 </body>
 </html>

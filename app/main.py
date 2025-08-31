@@ -367,6 +367,34 @@ async def train_agent(request: TrainRequest):
         )
 
 
+@app.post("/api/reset-training")
+async def reset_training():
+    """Reset training state and statistics."""
+    global policy_weights, policy_metadata
+    
+    try:
+        # Reload the original/default policy to reset learned weights
+        policy_dict = load_or_create_policy('policies/best.npz')
+        policy_weights = policy_dict['linear_weights']
+        policy_metadata = policy_dict.get('_metadata', {})
+        
+        # Log the reset action
+        print("Training state reset - policy reloaded")
+        
+        return {
+            "success": True,
+            "message": "Training state reset successfully",
+            "policy_metadata": policy_metadata
+        }
+        
+    except Exception as e:
+        print(f"Reset training error: {e}")
+        return {
+            "success": False, 
+            "message": f"Reset failed: {str(e)}"
+        }
+
+
 @app.websocket("/ws/stream")
 async def websocket_stream(websocket: WebSocket, episodes: int = 1, seed: Optional[int] = None, algo: str = "cem"):
     """WebSocket endpoint for streaming agent gameplay."""
@@ -378,6 +406,14 @@ async def websocket_stream(websocket: WebSocket, episodes: int = 1, seed: Option
         return
     
     try:
+        # For CEM and REINFORCE, indicate this is a learning process
+        if algo in ["cem", "reinforce"]:
+            await websocket.send_json({
+                "type": "learning_mode",
+                "algorithm": algo.upper(),
+                "message": f"{algo.upper()} Streaming: Showing policy evolution over {episodes} episodes"
+            })
+        
         # Create agent once if using new algorithms
         agent = None
         if algo not in ["cem", "reinforce"]:
@@ -415,7 +451,8 @@ async def websocket_stream(websocket: WebSocket, episodes: int = 1, seed: Option
                 **frame_data.model_dump(),
                 "episode": episode + 1,
                 "total_episodes": episodes,
-                "algorithm": algo
+                "algorithm": algo,
+                "learning_info": f"{algo.upper()} Learning: Episode {episode + 1}/{episodes}" if algo in ["cem", "reinforce"] else None
             })
             
             while not env.game_over and step_count < max_steps:

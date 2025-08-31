@@ -50,6 +50,7 @@ class TetrisApp {
             playOnceBtn: document.getElementById('playOnceBtn'),
             playMultipleBtn: document.getElementById('playMultipleBtn'),
             quickTrainBtn: document.getElementById('quickTrainBtn'),
+            resetTrainingBtn: document.getElementById('resetTrainingBtn'),
             clearResultsBtn: document.getElementById('clearResultsBtn'),
             
             // Stats
@@ -101,6 +102,18 @@ class TetrisApp {
         this.elements.playOnceBtn.addEventListener('click', () => this.playOnce());
         this.elements.playMultipleBtn.addEventListener('click', () => this.playEpisodes());
         this.elements.quickTrainBtn.addEventListener('click', () => this.quickTrain());
+        
+        // Debug: Check if resetTrainingBtn exists
+        console.log('resetTrainingBtn element:', this.elements.resetTrainingBtn);
+        if (this.elements.resetTrainingBtn) {
+            console.log('Adding click listener to resetTrainingBtn');
+            this.elements.resetTrainingBtn.addEventListener('click', () => {
+                console.log('Reset Training button clicked!');
+                this.resetTraining();
+            });
+        } else {
+            console.error('resetTrainingBtn element not found!');
+        }
         this.elements.clearResultsBtn.addEventListener('click', () => this.resetStats());
         
         // Algorithm change listeners (both play and training)
@@ -657,6 +670,61 @@ class TetrisApp {
         }
     }
     
+    resetTraining() {
+        console.log('resetTraining function called!'); // Debug log
+        
+        // Reset training state and statistics
+        this.log('🔄 Resetting training state...', 'info');
+        
+        // Clear episode history and reset statistics
+        this.episodeHistory = [];
+        this.resetStats();
+        
+        // Reset UI elements
+        this.elements.gameStatus.textContent = 'Ready';
+        this.elements.quickTrainBtn.disabled = false;
+        
+        // Clear canvas
+        this.drawEmptyBoard();
+        
+        // Reset all stats displays
+        this.elements.currentScore.textContent = '0';
+        this.elements.currentLines.textContent = '0';
+        this.elements.currentSteps.textContent = '0';
+        
+        // Reset result statistics
+        this.elements.avgScore.textContent = '0.0';
+        this.elements.avgLines.textContent = '0.0';
+        this.elements.avgSteps.textContent = '0.0';
+        this.elements.bestScore.textContent = '0';
+        this.elements.totalEpisodes.textContent = '0';
+        
+        this.log('🧹 UI state cleared, contacting backend...', 'info');
+        
+        // Send reset request to backend to clear any server-side training state
+        fetch('/api/reset-training', { method: 'POST' })
+            .then(response => {
+                console.log('Reset API response:', response); // Debug log
+                if (response.ok) {
+                    this.log('✅ Training state reset successfully!', 'success');
+                    return response.json();
+                } else {
+                    this.log('⚠️ Backend reset failed (continuing with UI reset)', 'warning');
+                    throw new Error(`HTTP ${response.status}`);
+                }
+            })
+            .then(data => {
+                console.log('Reset response data:', data); // Debug log
+                if (data && data.policy_metadata) {
+                    this.log(`📋 Policy reloaded: ${data.policy_metadata.algorithm || 'Unknown'}`, 'info');
+                }
+            })
+            .catch(error => {
+                console.error('Reset request error:', error); // Debug log
+                this.log('⚠️ Reset request failed (UI reset completed)', 'warning');
+            });
+    }
+    
     showTrainingProgress() {
         // Visual feedback during training - animated progress
         let frame = 0;
@@ -1201,7 +1269,8 @@ class TetrisApp {
     }
 }
 
-// Initialize app when page loads
+// Initialize app when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
-    new TetrisApp();
+    window.app = new TetrisApp();
+    console.log('✅ TetrisApp initialized and exposed as window.app');
 });
