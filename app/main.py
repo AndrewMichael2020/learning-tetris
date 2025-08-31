@@ -1,5 +1,12 @@
 """
-FastAPI application for Tetris RL web interface.
+Fasimport time
+from contextlib import asynccontextmanager
+from typing import Optional, Dict, Any
+import numpy as np
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import HTMLResponse, FileResponse
+from fastapi.middleware.cors import CORSMiddlewarelication for Tetris RL web interface.
 """
 import asyncio
 import base64
@@ -636,11 +643,14 @@ async def websocket_play_once(websocket: WebSocket, seed: Optional[int] = None, 
 
 
 @app.websocket("/ws/train")
-async def websocket_train(websocket: WebSocket, algo: str = "cem", seed: Optional[int] = None):
+async def websocket_train(websocket: WebSocket, algo: str = "cem", seed: Optional[int] = None,
+                         generations: Optional[int] = None, population_size: Optional[int] = None,
+                         episodes_per_candidate: Optional[int] = None, episodes: Optional[int] = None,
+                         learning_rate: Optional[float] = None):
     """WebSocket endpoint for training with real-time progress updates and cancellation support."""
     try:
         await websocket.accept()
-        print(f"Training WebSocket accepted: algo={algo}, seed={seed}")
+        print(f"Training WebSocket accepted: algo={algo}, seed={seed}, generations={generations}, population_size={population_size}")
         
         if not config.train_enabled:
             await websocket.send_json({"error": "Training is disabled"})
@@ -664,40 +674,84 @@ async def websocket_train(websocket: WebSocket, algo: str = "cem", seed: Optiona
                 # Import the training function that supports progress callbacks
                 from rl.cem_agent import evolve_with_progress
                 
-                # Default parameters for quick training
-                generations = 10
-                population_size = 20
-                episodes_per_candidate = 2
+                # Use parameters from user input or defaults for quick training
+                cem_generations = generations or 10
+                cem_population_size = population_size or 20
+                cem_episodes_per_candidate = episodes_per_candidate or 2
                 
                 best_performance = 0.0
                 
                 # Progress callback function
                 async def progress_callback(generation, best_fitness, population_fitness):
                     nonlocal training_cancelled, best_performance
-                    best_performance = max(best_performance, best_fitness)
                     
-                    progress = (generation + 1) / generations * 100
-                    await websocket.send_json({
-                        "status": "training",
-                        "message": f"Generation {generation+1}/{generations}: Best fitness = {best_fitness:.1f}",
-                        "algo": algo,
-                        "progress": progress,
-                        "best_performance": float(best_performance),
-                        "generation": generation + 1,
-                        "total_generations": generations
-                    })
+                    # Multiple cancellation checks
+                    if training_cancelled:
+                        return False
                     
-                    # Check if client disconnected (training should be cancelled)
-                    return not training_cancelled
+                    try:
+                        # More lenient WebSocket connection check
+                        if websocket.client_state.name != 'CONNECTED':
+                            print("WebSocket no longer connected - cancelling training")
+                            training_cancelled = True
+                            return False
+                        
+                        best_performance = max(best_performance, best_fitness)
+                        
+                        # Calculate detailed statistics
+                        avg_fitness = sum(population_fitness) / len(population_fitness) if population_fitness else 0
+                        min_fitness = min(population_fitness) if population_fitness else 0
+                        max_fitness = max(population_fitness) if population_fitness else 0
+                        
+                        # Calculate population diversity (standard deviation)
+                        import statistics
+                        diversity = statistics.stdev(population_fitness) if len(population_fitness) > 1 else 0
+                        
+                        # Ensure all values are finite
+                        best_fitness = float(best_fitness) if np.isfinite(best_fitness) else 0.0
+                        avg_fitness = float(avg_fitness) if np.isfinite(avg_fitness) else 0.0
+                        min_fitness = float(min_fitness) if np.isfinite(min_fitness) else 0.0
+                        max_fitness = float(max_fitness) if np.isfinite(max_fitness) else 0.0
+                        diversity = float(diversity) if np.isfinite(diversity) else 0.0
+                        
+                        progress = (generation + 1) / cem_generations * 100
+                        await websocket.send_json({
+                            "status": "training",
+                            "message": f"Gen {generation+1}/{cem_generations}: Best={best_fitness:.1f}, Avg={avg_fitness:.1f}, Diversity={diversity:.1f}",
+                            "algo": algo,
+                            "progress": progress,
+                            "best_performance": float(best_performance),
+                            "generation": generation + 1,
+                            "total_generations": cem_generations,
+                            # Detailed training metrics
+                            "current_best": best_fitness,
+                            "current_avg": avg_fitness,
+                            "current_min": min_fitness,
+                            "current_max": max_fitness,
+                            "population_diversity": diversity,
+                            "population_size": len(population_fitness),
+                            "improvement": max(0.0, best_fitness - (best_performance - best_fitness))
+                        })
+                        
+                        # Return True to continue training
+                        return not training_cancelled
+                    except WebSocketDisconnect:
+                        print("CEM WebSocket disconnected - cancelling training")
+                        training_cancelled = True
+                        return False
+                    except Exception as e:
+                        print(f"CEM progress callback error: {e}")
+                        training_cancelled = True
+                        return False
                 
                 # Run CEM with progress updates
                 result = await evolve_with_progress(
                     env_factory=env_factory,
-                    generations=generations,
+                    generations=cem_generations,
                     seed=seed or 42,
                     out_path=config.policy_path,
-                    episodes_per_candidate=episodes_per_candidate,
-                    population_size=population_size,
+                    episodes_per_candidate=cem_episodes_per_candidate,
+                    population_size=cem_population_size,
                     progress_callback=progress_callback
                 )
                 
@@ -708,38 +762,72 @@ async def websocket_train(websocket: WebSocket, algo: str = "cem", seed: Optiona
                 # Import the training function that supports progress callbacks
                 from rl.reinforce_agent import train_with_progress
                 
-                # Default parameters for quick training
-                episodes = 100
-                learning_rate = 0.001
+                # Use parameters from user input or defaults for quick training
+                reinforce_episodes = episodes or 100
+                reinforce_learning_rate = learning_rate or 0.001
                 
                 best_performance = 0.0
                 
                 # Progress callback function
                 async def progress_callback(episode, episode_reward, best_reward):
                     nonlocal training_cancelled, best_performance
-                    best_performance = max(best_performance, best_reward)
                     
-                    progress = (episode + 1) / episodes * 100
-                    await websocket.send_json({
-                        "status": "training",
-                        "message": f"Episode {episode+1}/{episodes}: Reward = {episode_reward:.1f}, Best = {best_reward:.1f}",
-                        "algo": algo,
-                        "progress": progress,
-                        "best_performance": float(best_performance),
-                        "episode": episode + 1,
-                        "total_episodes": episodes
-                    })
+                    # Check if WebSocket is still open
+                    if training_cancelled:
+                        return False
                     
-                    # Check if client disconnected (training should be cancelled)
-                    return not training_cancelled
+                    try:
+                        # Check WebSocket connection state
+                        if websocket.client_state.name != 'CONNECTED':
+                            print("WebSocket no longer connected - cancelling training")
+                            training_cancelled = True
+                            return False
+                        
+                        best_performance = max(best_performance, best_reward)
+                        
+                        # Calculate additional metrics
+                        progress = (episode + 1) / reinforce_episodes * 100
+                        
+                        # Calculate recent performance trend (last 10 episodes)
+                        window_size = min(10, episode + 1)
+                        recent_start = max(0, episode + 1 - window_size)
+                        
+                        # Send detailed progress information every episode or every 10 episodes for frequent updates
+                        if episode % 5 == 0 or episode < 20:  # More frequent early on, then every 5
+                            await websocket.send_json({
+                                "status": "training",
+                                "message": f"Ep {episode+1}/{reinforce_episodes}: Reward={episode_reward:.1f}, Best={best_reward:.1f}",
+                                "algo": algo,
+                                "progress": progress,
+                                "best_performance": float(best_performance),
+                                "episode": episode + 1,
+                                "total_episodes": reinforce_episodes,
+                                # Detailed training metrics
+                                "current_reward": float(episode_reward),
+                                "current_best": float(best_reward),
+                                "improvement": float(episode_reward - best_performance + max(0, episode_reward - best_performance)),
+                                "episodes_completed": episode + 1,
+                                "learning_rate": float(reinforce_learning_rate)
+                            })
+                        
+                        # Return True to continue training
+                        return not training_cancelled
+                    except WebSocketDisconnect:
+                        print("REINFORCE WebSocket disconnected - cancelling training")
+                        training_cancelled = True
+                        return False
+                    except Exception as e:
+                        print(f"REINFORCE progress callback error: {e}")
+                        training_cancelled = True
+                        return False
                 
                 # Run REINFORCE with progress updates
                 result = await train_with_progress(
                     env_factory=env_factory,
-                    episodes=episodes,
+                    episodes=reinforce_episodes,
                     seed=seed or 42,
                     out_path=config.policy_path,
-                    learning_rate=learning_rate,
+                    learning_rate=reinforce_learning_rate,
                     progress_callback=progress_callback
                 )
                 
@@ -801,12 +889,17 @@ async def websocket_train(websocket: WebSocket, algo: str = "cem", seed: Optiona
                 best_performance = env.score + env.lines_cleared * 100
             
             if training_cancelled:
-                await websocket.send_json({
-                    "status": "cancelled",
-                    "message": "Training was cancelled",
-                    "algo": algo,
-                    "progress": 0
-                })
+                # Send cancellation message with some delay to ensure it's received
+                try:
+                    await websocket.send_json({
+                        "status": "cancelled",
+                        "message": "Training was cancelled - stopping immediately",
+                        "algo": algo,
+                        "progress": 0
+                    })
+                    await asyncio.sleep(0.1)  # Small delay to ensure message is sent
+                except Exception as e:
+                    print(f"Error sending cancellation message: {e}")
             else:
                 # Training completed successfully
                 if algo in ["cem", "reinforce"]:
@@ -837,6 +930,7 @@ async def websocket_train(websocket: WebSocket, algo: str = "cem", seed: Optiona
         training_cancelled = True
     except Exception as e:
         print(f"Exception in training WebSocket: {e}")
+        training_cancelled = True
         try:
             await websocket.send_json({"error": str(e)})
         except:

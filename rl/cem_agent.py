@@ -349,7 +349,26 @@ async def evolve_with_progress(env_factory, generations=10, seed=42, out_path="p
         # Evaluate population
         fitness_scores = []
         for i, candidate in enumerate(population):
+            # Check for cancellation before evaluating each candidate
+            if progress_callback:
+                should_continue = await progress_callback(generation, best_fitness, fitness_scores)
+                if not should_continue:
+                    print(f"Training cancelled during candidate evaluation {i+1}/{population_size}")
+                    return {
+                        'best_fitness': best_fitness,
+                        'best_weights': best_weights,
+                        'fitness_history': fitness_history,
+                        'final_mean': mean,
+                        'final_std': std
+                    }
+            
+            # Add more frequent cancellation checks during candidate evaluation
             candidate_seed = rng.integers(0, 1000000)
+            
+            # Yield control more frequently during evaluation
+            if i % 2 == 0:  # Check every 2 candidates
+                await asyncio.sleep(0.01)
+                
             fitness = evaluate_candidate(candidate, env_factory, 
                                        episodes_per_candidate, candidate_seed)
             fitness_scores.append(fitness)
@@ -357,6 +376,23 @@ async def evolve_with_progress(env_factory, generations=10, seed=42, out_path="p
             if fitness > best_fitness:
                 best_fitness = fitness
                 best_weights = candidate.copy()
+                
+            # Allow other async operations more frequently
+            if i % 5 == 0:  # Every 5 candidates
+                await asyncio.sleep(0.01)
+                
+                # Additional cancellation check after fitness evaluation
+                if progress_callback:
+                    should_continue = await progress_callback(generation, best_fitness, fitness_scores)
+                    if not should_continue:
+                        print(f"Training cancelled during candidate evaluation {i+1}/{population_size}")
+                        return {
+                            'best_fitness': best_fitness,
+                            'best_weights': best_weights,
+                            'fitness_history': fitness_history,
+                            'final_mean': mean,
+                            'final_std': std
+                        }
         
         # Update distribution from elites
         sorted_indices = np.argsort(fitness_scores)[::-1]

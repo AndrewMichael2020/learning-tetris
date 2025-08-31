@@ -16,7 +16,10 @@ class TetrisApp {
         this.quickTrainWebSocket = null;
         this.isStreaming = false;
         this.currentGame = null;
-        this.debugMode = false; // Set to true to enable debug logging
+        this.debugMode = true; // Enable debug logging to show detailed training progress
+        
+        // Mutual exclusion state - only one WebSocket operation at a time
+        this.activeOperation = null; // 'stream', 'playOnce', 'playMultiple', 'quickTrain'
         
         // Episode tracking for statistics
         this.episodeHistory = [];
@@ -39,6 +42,9 @@ class TetrisApp {
         this.setupEventListeners();
         this.checkHealth();
         this.updateTrainingControls();
+        
+        // Initialize button states (all enabled initially)
+        this.updateButtonStates();
         
         // Draw initial empty board
         this.drawEmptyBoard();
@@ -172,6 +178,53 @@ class TetrisApp {
             'aco': 'Ant Colony Optimization (Night Shift Ant March)'
         };
         return names[algo] || algo.toUpperCase();
+    }
+    
+    // Mutual exclusion button management
+    setActiveOperation(operation) {
+        this.activeOperation = operation;
+        this.updateButtonStates();
+        
+        // Log the mutual exclusion for user awareness
+        const operationNames = {
+            'stream': 'Stream Agent',
+            'playOnce': 'Play Once',
+            'playMultiple': 'Play Multiple', 
+            'quickTrain': 'Quick Train'
+        };
+        this.log(`🔒 ${operationNames[operation]} active - other buttons disabled`, 'debug');
+    }
+    
+    clearActiveOperation() {
+        if (this.activeOperation !== null) {
+            this.activeOperation = null;
+            this.updateButtonStates();
+            this.log(`🔓 All buttons re-enabled`, 'debug');
+        }
+    }
+    
+    updateButtonStates() {
+        const buttons = [
+            { element: this.elements.streamBtn, operation: 'stream' },
+            { element: this.elements.playOnceBtn, operation: 'playOnce' },
+            { element: this.elements.playMultipleBtn, operation: 'playMultiple' },
+            { element: this.elements.quickTrainBtn, operation: 'quickTrain' }
+        ];
+        
+        buttons.forEach(({ element, operation }) => {
+            if (!element) return;
+            
+            if (this.activeOperation === null) {
+                // No active operation - enable all buttons
+                element.disabled = false;
+            } else if (this.activeOperation === operation) {
+                // This is the active operation - keep it enabled (for Stop functionality)
+                element.disabled = false;
+            } else {
+                // Different operation is active - disable this button
+                element.disabled = true;
+            }
+        });
     }
     
     collectAlgorithmParams(algo) {
@@ -322,8 +375,10 @@ class TetrisApp {
         // Reset button states and UI
         this.elements.playOnceBtn.textContent = 'Play Once';
         this.elements.playOnceBtn.disabled = false;
-        this.elements.playMultipleBtn.disabled = false;
         this.elements.gameStatus.textContent = 'Stopped';
+        
+        // Clear the active operation and re-enable other buttons
+        this.clearActiveOperation();
         
         // Clear the canvas
         this.drawEmptyBoard();
@@ -350,9 +405,10 @@ class TetrisApp {
         
         // Reset button states and UI
         this.elements.playMultipleBtn.textContent = 'Play Multiple';
-        this.elements.playOnceBtn.disabled = false;
-        this.elements.playMultipleBtn.disabled = false;
         this.elements.gameStatus.textContent = 'Stopped';
+        
+        // Clear the active operation and re-enable other buttons
+        this.clearActiveOperation();
         
         // Clear the canvas
         this.drawEmptyBoard();
@@ -361,6 +417,11 @@ class TetrisApp {
     }
 
     toggleQuickTrain() {
+        // Prevent multiple clicks while stopping
+        if (this.elements.quickTrainBtn.disabled) {
+            return;
+        }
+        
         // If currently training, stop the training
         if (this.quickTrainWebSocket && this.quickTrainWebSocket.readyState === WebSocket.OPEN) {
             this.stopQuickTrain();
@@ -372,24 +433,27 @@ class TetrisApp {
     
     stopQuickTrain() {
         if (this.quickTrainWebSocket) {
-            this.log('Stopping Quick Train...', 'info');
+            this.log('Stopping Quick Train...', 'warning');
+            
+            // Disable the button immediately to prevent multiple clicks
+            this.elements.quickTrainBtn.disabled = true;
+            this.elements.quickTrainBtn.textContent = 'Stopping...';
+            this.elements.gameStatus.textContent = 'Stopping Training...';
+            
             this.quickTrainWebSocket.close();
             this.quickTrainWebSocket = null;
         }
         
-        // Reset button states and UI
-        this.elements.quickTrainBtn.textContent = 'Quick Train';
-        this.elements.quickTrainBtn.disabled = false;
-        this.elements.gameStatus.textContent = 'Training Stopped';
+        // Note: Don't clear active operation here - wait for backend confirmation
+        // The WebSocket onclose handler will handle the final cleanup
         
-        // Clear the canvas and reset results
-        this.drawEmptyBoard();
-        this.resetStats();
-        
-        this.log('Quick Train stopped', 'info');
+        this.log('Quick Train stop signal sent', 'info');
     }
 
     async playOnce() {
+        // Set this operation as active and disable other buttons
+        this.setActiveOperation('playOnce');
+        
         // Always play exactly 1 episode but use other control settings
         const seed = this.elements.seed.value ? parseInt(this.elements.seed.value) : null;
         const algo = this.elements.algorithm.value;
@@ -397,7 +461,6 @@ class TetrisApp {
         // Change button to "Stop" and disable multiple play
         this.elements.playOnceBtn.textContent = 'Stop';
         this.elements.playOnceBtn.disabled = false;  // Keep enabled so user can stop
-        this.elements.playMultipleBtn.disabled = true;
         this.elements.gameStatus.textContent = 'Playing...';
 
         // Clear canvas and show we're starting
@@ -530,7 +593,9 @@ class TetrisApp {
                 this.playOnceWebSocket = null;
                 this.elements.playOnceBtn.textContent = 'Play Once';
                 this.elements.playOnceBtn.disabled = false;
-                this.elements.playMultipleBtn.disabled = false;
+                
+                // Clear the active operation and re-enable other buttons
+                this.clearActiveOperation();
                 
                 if (this.elements.gameStatus.textContent === 'Playing...') {
                     this.elements.gameStatus.textContent = 'Completed';
@@ -542,7 +607,9 @@ class TetrisApp {
                 this.elements.gameStatus.textContent = 'Error';
                 this.elements.playOnceBtn.textContent = 'Play Once';
                 this.elements.playOnceBtn.disabled = false;
-                this.elements.playMultipleBtn.disabled = false;
+                
+                // Clear the active operation and re-enable other buttons
+                this.clearActiveOperation();
             };
 
         } catch (error) {
@@ -550,17 +617,21 @@ class TetrisApp {
             this.elements.gameStatus.textContent = 'Error';
             this.elements.playOnceBtn.textContent = 'Play Once';
             this.elements.playOnceBtn.disabled = false;
-            this.elements.playMultipleBtn.disabled = false;
+            
+            // Clear the active operation and re-enable other buttons
+            this.clearActiveOperation();
         }
     }
     
     async playEpisodes() {
+        // Set this operation as active and disable other buttons
+        this.setActiveOperation('playMultiple');
+        
         const episodes = parseInt(this.elements.episodes.value);
         const seed = this.elements.seed.value ? parseInt(this.elements.seed.value) : null;
         const algo = this.elements.algorithm.value;
         
         // Change button to "Stop" and disable play once
-        this.elements.playOnceBtn.disabled = true;
         this.elements.playMultipleBtn.textContent = 'Stop';
         this.elements.playMultipleBtn.disabled = false;  // Keep enabled so user can stop
         this.elements.gameStatus.textContent = 'Playing...';
@@ -651,9 +722,11 @@ class TetrisApp {
             
             this.playMultipleWebSocket.onclose = () => {
                 this.playMultipleWebSocket = null;
-                this.elements.playOnceBtn.disabled = false;
                 this.elements.playMultipleBtn.textContent = 'Play Multiple';
                 this.elements.playMultipleBtn.disabled = false;
+                
+                // Clear the active operation and re-enable other buttons
+                this.clearActiveOperation();
                 
                 if (this.elements.gameStatus.textContent.startsWith('Playing')) {
                     this.elements.gameStatus.textContent = 'Completed';
@@ -663,21 +736,28 @@ class TetrisApp {
             this.playMultipleWebSocket.onerror = (error) => {
                 this.log('Play Multiple WebSocket error: ' + error.message, 'error');
                 this.elements.gameStatus.textContent = 'Error';
-                this.elements.playOnceBtn.disabled = false;
                 this.elements.playMultipleBtn.textContent = 'Play Multiple';
                 this.elements.playMultipleBtn.disabled = false;
+                
+                // Clear the active operation and re-enable other buttons
+                this.clearActiveOperation();
             };
 
         } catch (error) {
             this.log('Play Multiple failed: ' + error.message, 'error');
             this.elements.gameStatus.textContent = 'Error';
-            this.elements.playOnceBtn.disabled = false;
             this.elements.playMultipleBtn.textContent = 'Play Multiple';
             this.elements.playMultipleBtn.disabled = false;
+            
+            // Clear the active operation and re-enable other buttons
+            this.clearActiveOperation();
         }
     }
     
     async startQuickTrain() {
+        // Set this operation as active and disable other buttons
+        this.setActiveOperation('quickTrain');
+        
         const algo = this.elements.trainAlgo.value;
         const seed = parseInt(this.elements.trainSeed.value);
         
@@ -691,13 +771,26 @@ class TetrisApp {
         this.log(`Starting ${algo.toUpperCase()} training...`, 'warning');
         
         try {
-            // Create WebSocket URL with parameters
+            // Collect training parameters based on algorithm
             const params = new URLSearchParams({
                 algo: algo,
                 seed: seed.toString()
             });
             
-            const wsUrl = `ws://localhost:8000/ws/train?${params.toString()}`;
+            // Add algorithm-specific parameters
+            if (algo === 'cem') {
+                params.append('generations', this.elements.generations.value);
+                params.append('population_size', this.elements.populationSize.value);
+                // episodes_per_candidate is typically fixed for quick training
+                params.append('episodes_per_candidate', '2');
+            } else if (algo === 'reinforce') {
+                params.append('episodes', this.elements.trainEpisodes.value);
+                params.append('learning_rate', this.elements.learningRate.value);
+            }
+            
+            // Use secure WebSocket (wss://) if page is loaded over HTTPS, otherwise use ws://
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/ws/train?${params.toString()}`;
             console.log('Connecting to training WebSocket:', wsUrl);
             
             this.quickTrainWebSocket = new WebSocket(wsUrl);
@@ -724,10 +817,48 @@ class TetrisApp {
                     if (data.status === 'starting') {
                         this.elements.gameStatus.textContent = data.message;
                         this.log(data.message, 'info');
+                        
+                        // Log training configuration at start
+                        const algo = this.elements.trainAlgo.value;
+                        if (algo === 'cem') {
+                            const gens = this.elements.generations.value;
+                            const pop = this.elements.populationSize.value;
+                            this.log(`🔬 CEM Training Config: ${gens} generations, ${pop} population size`, 'info');
+                        } else if (algo === 'reinforce') {
+                            const eps = this.elements.trainEpisodes.value;
+                            const lr = this.elements.learningRate.value;
+                            this.log(`🎯 REINFORCE Training Config: ${eps} episodes, learning rate ${lr}`, 'info');
+                        }
+                        
                         this.showTrainingProgress();
                     } else if (data.status === 'training') {
                         this.elements.gameStatus.textContent = data.message;
-                        this.log(data.message, 'info');
+                        
+                        // Enhanced logging with detailed training information
+                        if (data.algo === 'cem') {
+                            // CEM-specific detailed logging
+                            if (data.current_best !== undefined) {
+                                this.log(`🧬 Gen ${data.generation}/${data.total_generations}: Best=${data.current_best.toFixed(1)}, Avg=${data.current_avg.toFixed(1)}`, 'info');
+                                if (data.population_diversity !== undefined) {
+                                    this.log(`   📊 Population: Size=${data.population_size}, Diversity=${data.population_diversity.toFixed(2)}, Range=[${data.current_min.toFixed(1)}-${data.current_max.toFixed(1)}]`, 'debug');
+                                }
+                                if (data.improvement > 0) {
+                                    this.log(`   📈 Improvement: +${data.improvement.toFixed(1)} from previous best`, 'success');
+                                }
+                            }
+                        } else if (data.algo === 'reinforce') {
+                            // REINFORCE-specific detailed logging
+                            if (data.current_reward !== undefined) {
+                                this.log(`🎯 Episode ${data.episode}/${data.total_episodes}: Reward=${data.current_reward.toFixed(1)}, Best=${data.current_best.toFixed(1)}`, 'info');
+                                this.log(`   🔧 Learning Rate: ${data.learning_rate}, Episodes Completed: ${data.episodes_completed}`, 'debug');
+                                if (data.improvement > 0) {
+                                    this.log(`   📈 New Best! Improvement: +${data.improvement.toFixed(1)}`, 'success');
+                                }
+                            }
+                        } else {
+                            // Generic algorithm logging
+                            this.log(data.message, 'info');
+                        }
                         
                         // Update progress visualization
                         this.updateTrainingProgress(data.progress || 0);
@@ -737,9 +868,22 @@ class TetrisApp {
                             this.elements.currentScore.textContent = Math.round(data.best_performance);
                             this.elements.currentLines.textContent = Math.round(data.best_performance / 40);
                         }
+                        
+                        // Show detailed metrics in a subtle way
+                        if (data.current_best !== undefined && data.progress !== undefined) {
+                            const progressStr = `${data.progress.toFixed(1)}%`;
+                            this.log(`   ⏱️  Progress: ${progressStr}, Current Best: ${data.current_best.toFixed(1)}`, 'debug');
+                        }
                     } else if (data.status === 'completed') {
                         this.elements.gameStatus.textContent = 'Training Complete';
-                        this.log(`Training completed! ${data.message}`, 'success');
+                        this.log(`🎉 Training completed! ${data.message}`, 'success');
+                        
+                        // Add training summary
+                        if (data.training_time !== undefined) {
+                            const timeMin = Math.floor(data.training_time / 60);
+                            const timeSec = Math.round(data.training_time % 60);
+                            this.log(`📊 Training Summary: ${timeMin}m ${timeSec}s total time, Final performance: ${data.best_performance.toFixed(1)}`, 'success');
+                        }
                         
                         // Show final results
                         if (data.best_performance !== undefined) {
@@ -751,9 +895,10 @@ class TetrisApp {
                         // Show completed visualization
                         this.renderBoardDirectly(null);
                         
-                        // Reset button state
+                        // Reset button state and clear active operation
                         this.elements.quickTrainBtn.textContent = 'Quick Train';
                         this.elements.quickTrainBtn.disabled = false;
+                        this.clearActiveOperation();
                         
                         // Close WebSocket
                         this.quickTrainWebSocket = null;
@@ -763,11 +908,21 @@ class TetrisApp {
                     } else if (data.status === 'cancelled') {
                         this.elements.gameStatus.textContent = 'Training Cancelled';
                         this.log(data.message, 'warning');
-                        this.stopQuickTrain();
+                        
+                        // Reset UI immediately for cancelled training
+                        this.elements.quickTrainBtn.textContent = 'Quick Train';
+                        this.elements.quickTrainBtn.disabled = false;
+                        this.clearActiveOperation();
+                        this.quickTrainWebSocket = null;
                     } else if (data.status === 'error') {
                         this.elements.gameStatus.textContent = 'Training Failed';
                         this.log('Training failed: ' + data.message, 'error');
-                        this.stopQuickTrain();
+                        
+                        // Reset UI immediately for failed training
+                        this.elements.quickTrainBtn.textContent = 'Quick Train';
+                        this.elements.quickTrainBtn.disabled = false;
+                        this.clearActiveOperation();
+                        this.quickTrainWebSocket = null;
                     }
                 } catch (error) {
                     console.error('Error parsing training WebSocket message:', error);
@@ -777,12 +932,18 @@ class TetrisApp {
             
             this.quickTrainWebSocket.onclose = () => {
                 console.log('Training WebSocket closed');
-                if (this.elements.quickTrainBtn.textContent === 'Stop') {
-                    // Training was stopped by user or completed
-                    this.elements.quickTrainBtn.textContent = 'Quick Train';
-                    this.elements.quickTrainBtn.disabled = false;
-                }
+                
+                // Always reset the button and UI state when WebSocket closes
+                this.elements.quickTrainBtn.textContent = 'Quick Train';
+                this.elements.quickTrainBtn.disabled = false;
+                this.elements.gameStatus.textContent = 'Training Stopped';
+                
                 this.quickTrainWebSocket = null;
+                
+                // Clear the active operation and re-enable other buttons
+                this.clearActiveOperation();
+                
+                this.log('Training WebSocket disconnected - buttons re-enabled', 'info');
             };
             
             this.quickTrainWebSocket.onerror = (error) => {
@@ -799,6 +960,9 @@ class TetrisApp {
             this.elements.quickTrainBtn.textContent = 'Quick Train';
             this.elements.quickTrainBtn.disabled = false;
             this.drawEmptyBoard();
+            
+            // Clear the active operation and re-enable other buttons
+            this.clearActiveOperation();
         }
     }
     
@@ -949,6 +1113,9 @@ class TetrisApp {
     }
     
     startStream() {
+        // Set this operation as active and disable other buttons
+        this.setActiveOperation('stream');
+        
         // Get control parameters
         const episodes = parseInt(this.elements.episodes.value);
         const seed = this.elements.seed.value ? parseInt(this.elements.seed.value) : null;
@@ -1042,6 +1209,9 @@ class TetrisApp {
         this.elements.streamBtn.textContent = 'Stream Agent';
         this.elements.streamBtn.classList.remove('btn-warning');
         this.elements.streamBtn.classList.add('btn-primary');
+        
+        // Clear the active operation and re-enable other buttons
+        this.clearActiveOperation();
         
         if (this.elements.gameStatus.textContent === 'Streaming...') {
             this.elements.gameStatus.textContent = 'Ready';
