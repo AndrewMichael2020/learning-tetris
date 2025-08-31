@@ -5,8 +5,8 @@ Uses pheromone trails and heuristic information to guide action selection.
 import math
 import random
 from typing import List, Dict, Any
-from .agent_base import Agent
-from .search_utils import enumerate_actions, score_afterstate, softmax
+from .agents.base import Agent
+from .utils.search import enumerate_actions, score_afterstate, softmax
 
 
 class ACOAgent(Agent):

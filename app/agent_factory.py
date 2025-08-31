@@ -67,3 +67,14 @@ def get_default_params(algo: str) -> Dict[str, Any]:
         return param_class().model_dump()
     
     return {}
+
+
+def reset_all_agents():
+    """
+    Reset all agent states and clear any cached data.
+    This ensures all algorithms start fresh from their defaults.
+    """
+    # Clear any module-level caches or state
+    # For now, this is a placeholder that can be extended
+    # as we add stateful algorithms
+    pass

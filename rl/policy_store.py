@@ -17,7 +17,9 @@ def save_policy(weights: Dict[str, np.ndarray], path: str,
         metadata: Optional metadata dict to include
     """
     # Ensure directory exists
-    os.makedirs(os.path.dirname(path), exist_ok=True)
+    dir_path = os.path.dirname(path)
+    if dir_path:  # Only create directory if path contains one
+        os.makedirs(dir_path, exist_ok=True)
     
     # Prepare data for saving
     save_dict = weights.copy()

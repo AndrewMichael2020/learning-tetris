@@ -150,6 +150,31 @@ class TetrisEnv:
         self.piece_bag = []
         self.bag_index = 0
         
+    def copy(self):
+        """Create a deep copy of the environment state."""
+        import copy as copy_module
+        
+        env_copy = TetrisEnv(self.width, self.height)
+        env_copy.board = self.board.copy() if self.board is not None else None
+        env_copy.current_piece = self.current_piece.copy() if self.current_piece is not None else None
+        env_copy.current_piece_name = self.current_piece_name
+        env_copy.current_rotation = self.current_rotation
+        env_copy.current_pos = self.current_pos.copy()
+        env_copy.score = self.score
+        env_copy.lines_cleared = self.lines_cleared
+        env_copy.step_count = self.step_count
+        env_copy.game_over = self.game_over
+        
+        # Copy RNG state
+        if self.rng is not None:
+            env_copy.rng = copy_module.deepcopy(self.rng)
+        
+        # Copy piece bag
+        env_copy.piece_bag = self.piece_bag.copy()
+        env_copy.bag_index = self.bag_index
+        
+        return env_copy
+        
     def reset(self, seed: Optional[int] = None) -> np.ndarray:
         """Reset environment and return initial board state."""
         self.rng = np.random.default_rng(seed)

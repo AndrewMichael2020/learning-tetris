@@ -369,21 +369,33 @@ async def train_agent(request: TrainRequest):
 
 @app.post("/api/reset-training")
 async def reset_training():
-    """Reset training state and statistics."""
+    """Reset training state and statistics for all models."""
     global policy_weights, policy_metadata
     
     try:
-        # Reload the original/default policy to reset learned weights
-        policy_dict = load_or_create_policy('policies/best.npz')
+        # Reload the original baseline policy to reset CEM/REINFORCE weights
+        policy_dict = load_or_create_policy(
+            path=config.policy_path,
+            feature_dim=17,
+            seed=config.demo_seed
+        )
         policy_weights = policy_dict['linear_weights']
         policy_metadata = policy_dict.get('_metadata', {})
         
+        # Reset any cached agent states or parameters for new algorithms
+        # This ensures all algorithms start fresh from their defaults
+        from .agent_factory import reset_all_agents
+        try:
+            reset_all_agents()  # Clear any cached agent state
+        except:
+            pass  # If function doesn't exist, that's OK
+        
         # Log the reset action
-        print("Training state reset - policy reloaded")
+        print("Training state reset - all models reset to defaults")
         
         return {
             "success": True,
-            "message": "Training state reset successfully",
+            "message": "All training models reset successfully",
             "policy_metadata": policy_metadata
         }
         

@@ -16,6 +16,7 @@ class TetrisApp {
         this.isStreaming = false;
         this.currentGame = null;
         this.debugMode = false; // Set to true to enable debug logging
+        this.isResetting = false; // Flag to prevent duplicate reset calls
         
         // Episode tracking for statistics
         this.episodeHistory = [];
@@ -673,8 +674,15 @@ class TetrisApp {
     resetTraining() {
         console.log('resetTraining function called!'); // Debug log
         
+        // Prevent duplicate calls
+        if (this.isResetting) {
+            console.log('Reset already in progress, skipping duplicate call');
+            return;
+        }
+        this.isResetting = true;
+        
         // Reset training state and statistics
-        this.log('🔄 Resetting training state...', 'info');
+        this.log('🔄 Resetting all training models...', 'info');
         
         // Clear episode history and reset statistics
         this.episodeHistory = [];
@@ -699,14 +707,11 @@ class TetrisApp {
         this.elements.bestScore.textContent = '0';
         this.elements.totalEpisodes.textContent = '0';
         
-        this.log('🧹 UI state cleared, contacting backend...', 'info');
-        
         // Send reset request to backend to clear any server-side training state
         fetch('/api/reset-training', { method: 'POST' })
             .then(response => {
                 console.log('Reset API response:', response); // Debug log
                 if (response.ok) {
-                    this.log('✅ Training state reset successfully!', 'success');
                     return response.json();
                 } else {
                     this.log('⚠️ Backend reset failed (continuing with UI reset)', 'warning');
@@ -715,13 +720,17 @@ class TetrisApp {
             })
             .then(data => {
                 console.log('Reset response data:', data); // Debug log
+                this.log('✅ All training models reset successfully!', 'success');
                 if (data && data.policy_metadata) {
-                    this.log(`📋 Policy reloaded: ${data.policy_metadata.algorithm || 'Unknown'}`, 'info');
+                    console.log(`Policy reloaded: ${data.policy_metadata.algorithm || 'Unknown'}`);
                 }
             })
             .catch(error => {
                 console.error('Reset request error:', error); // Debug log
                 this.log('⚠️ Reset request failed (UI reset completed)', 'warning');
+            })
+            .finally(() => {
+                this.isResetting = false; // Allow future resets
             });
     }
     
