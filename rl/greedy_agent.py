@@ -3,8 +3,8 @@ Greedy Heuristic Agent - "Nurse Dictator"
 Simply picks the action with the lowest cost according to feature weights.
 """
 from typing import Dict, Any
-from .agent_base import Agent
-from .search_utils import enumerate_actions, score_afterstate, argmin_with_index
+from .agents.base import Agent
+from .utils.search import enumerate_actions, score_afterstate, argmin_with_index
 
 
 class GreedyAgent(Agent):

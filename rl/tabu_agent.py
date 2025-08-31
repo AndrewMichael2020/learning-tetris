@@ -5,8 +5,8 @@ Uses tabu memory to avoid recently explored moves and aspiration criteria.
 from typing import Deque, List, Dict, Any, Tuple
 from collections import deque
 import random
-from .agent_base import Agent
-from .search_utils import enumerate_actions, score_afterstate
+from .agents.base import Agent
+from .utils.search import enumerate_actions, score_afterstate
 
 
 class TabuAgent(Agent):

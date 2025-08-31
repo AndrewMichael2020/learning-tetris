@@ -145,8 +145,17 @@ def collect_episode(policy: REINFORCEPolicy, env: TetrisEnv, rng: np.random.Gene
         # Get state features AFTER action (for critic bootstrap)
         psi_sp = board_to_features(env.board) if not env.game_over else np.zeros_like(psi_s)
         
-        # Calculate reward using native game signals only
-        reward = env.score - prev_score  # Native Tetris points only
+        # Calculate reward using improved structure
+        score_reward = env.score - prev_score  # Native Tetris points
+        lines_reward = (env.lines_cleared - prev_lines) * 50  # Bonus for line clears
+        
+        # Small survival bonus to encourage longer games  
+        survival_bonus = 0.1
+        
+        # Penalty for game over
+        game_over_penalty = -10.0 if env.game_over else 0.0
+        
+        reward = score_reward + lines_reward + survival_bonus + game_over_penalty
         total_reward += reward
         
         # Store step data for Actor-Critic updates
@@ -193,12 +202,22 @@ def train(env_factory: Callable[[], TetrisEnv], episodes: int = 1000,
     """
     rng = np.random.default_rng(seed)
     
-    # Initialize policy with better starting weights (standard Tetris heuristics)
-    weights = np.zeros(feature_dim, dtype=np.float32)
-    weights[0] = -2.0 + rng.normal(0, 0.5)   # Holes penalty (with noise)
-    weights[1] = -0.5 + rng.normal(0, 0.2)   # Height penalty  
-    weights[2] = -0.2 + rng.normal(0, 0.1)   # Bumpiness penalty
-    weights[3] = 1.0 + rng.normal(0, 0.3)    # Lines cleared bonus
+    # Initialize policy from existing baseline policy
+    try:
+        from .policy_store import load_policy
+        baseline_policy = load_policy(out_path)
+        weights = baseline_policy['linear_weights'].copy()
+        print(f"🎯 Starting REINFORCE from existing policy: {weights[:5]}...")
+        # Add small random noise to break symmetry
+        weights += rng.normal(0, 0.02, size=feature_dim)
+    except:
+        print("⚠️  No existing policy found, initializing with heuristics")
+        # Initialize policy with better starting weights (standard Tetris heuristics)
+        weights = np.zeros(feature_dim, dtype=np.float32)
+        weights[0] = -2.0 + rng.normal(0, 0.5)   # Holes penalty (with noise)
+        weights[1] = -0.5 + rng.normal(0, 0.2)   # Height penalty  
+        weights[2] = -0.2 + rng.normal(0, 0.1)   # Bumpiness penalty
+        weights[3] = 1.0 + rng.normal(0, 0.3)    # Lines cleared bonus
     weights[4:] = rng.normal(0, 0.1, size=feature_dim-4)  # Other features small random
     
     # Clip to reasonable range
@@ -207,9 +226,9 @@ def train(env_factory: Callable[[], TetrisEnv], episodes: int = 1000,
     
     # Actor-Critic parameters
     gamma = 0.995
-    lr_actor = learning_rate  # e.g., 0.001-0.003
-    lr_critic = 0.003        # Critic learns faster
-    entropy_beta = 0.01      # Entropy regularization
+    lr_actor = learning_rate * 0.5  # Make learning more conservative 
+    lr_critic = learning_rate * 1.5  # Critic learns faster
+    entropy_beta = 0.005      # Reduce entropy reg for more focused learning
     
     # Initialize critic (value function weights on state features)
     v = np.zeros(feature_dim, dtype=np.float32)

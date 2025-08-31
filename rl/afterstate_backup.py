@@ -1,7 +1,6 @@
 """
 Afterstate enumeration for Tetris.
 Enumerates all legal piece placements and their resulting board states.
-NOTE: enumerate_afterstates moved to utils.search for better organization.
 """
 import numpy as np
 from typing import List, Tuple, Dict, Any
@@ -9,11 +8,6 @@ from .tetris_env import TetrisEnv, TETRIS_PIECES
 
 
 def enumerate_afterstates(env: TetrisEnv) -> List[Tuple[np.ndarray, Dict[str, Any]]]:
-    """
-    Redirect to utils.search.enumerate_afterstates for better organization.
-    """
-    from .utils.search import enumerate_afterstates as _enumerate_afterstates
-    return _enumerate_afterstates(env)
     """
     Enumerate all possible afterstates from current state.
     

@@ -5,8 +5,8 @@ Uses Metropolis acceptance criterion with cooling temperature.
 import random
 import statistics
 from typing import Dict, Any, Optional
-from .agent_base import Agent
-from .search_utils import enumerate_actions, score_afterstate, metropolis_accept
+from .agents.base import Agent
+from .utils.search import enumerate_actions, score_afterstate, metropolis_accept
 
 
 class SimulatedAnnealingAgent(Agent):
