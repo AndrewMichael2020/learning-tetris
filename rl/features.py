@@ -173,28 +173,35 @@ def board_to_features(board: np.ndarray) -> np.ndarray:
         heights = heights[:10]
     features.extend(heights)
     
-    # Count-based features (normalized by board area or reasonable maximums)
+    # Count-based features (make bad features negative for discrimination)
     board_area = height * width
     
-    holes_count = holes(board) / (board_area * 0.5)  # Normalize by half board area
+    # Holes: direct penalty (negative feature)
+    holes_count = -holes(board)  # Direct penalty, no normalization
     features.append(holes_count)
     
-    agg_height = aggregate_height(board) / (height * width)  # Normalize by max possible
+    # Aggregate height: penalty for being too high
+    agg_height = -aggregate_height(board) / (height * width)
     features.append(agg_height)
     
-    bump = bumpiness(board) / (height * (width - 1))  # Normalize by max possible
+    # Bumpiness: direct penalty
+    bump = -bumpiness(board)  # Direct penalty
     features.append(bump)
     
-    wells_count = wells(board) / (height * width * 0.25)  # Normalize conservatively
+    # Wells: penalty for deep wells
+    wells_count = -wells(board)
     features.append(wells_count)
     
-    max_h = max_height(board) / height  # Normalize by board height
+    # Max height: penalty for being too high
+    max_h = -max_height(board) / height
     features.append(max_h)
     
-    completed = completed_lines_potential(board) / height  # Normalize by board height
+    # Completed lines: positive reward
+    completed = completed_lines_potential(board)  # Keep positive
     features.append(completed)
     
-    row_trans = row_transitions(board) / (height * (width + 1))  # Max transitions per row
+    # Row transitions: penalty for fragmentation
+    row_trans = -row_transitions(board) / (height * (width + 1))
     features.append(row_trans)
     
     return np.array(features, dtype=np.float32)
@@ -204,10 +211,7 @@ def reward_shaping(prev_board: np.ndarray, next_board: np.ndarray) -> float:
     """
     Calculate reward shaping bonus based on board improvements.
     
-    Gives small positive rewards for:
-    - Reducing holes
-    - Reducing bumpiness
-    - Reducing aggregate height
+    Heavily penalize bad features and reward good features.
     """
     prev_holes = holes(prev_board)
     next_holes = holes(next_board)
@@ -218,16 +222,19 @@ def reward_shaping(prev_board: np.ndarray, next_board: np.ndarray) -> float:
     prev_height = aggregate_height(prev_board)
     next_height = aggregate_height(next_board)
     
-    # Small bonuses for improvements
+    # Strong penalties and rewards for changes
     reward = 0.0
     
-    if next_holes < prev_holes:
-        reward += 0.5 * (prev_holes - next_holes)
+    # Heavy penalty for creating holes, big reward for filling them
+    hole_change = next_holes - prev_holes
+    reward -= hole_change * 5.0  # 5 points penalty per new hole
     
-    if next_bump < prev_bump:
-        reward += 0.1 * (prev_bump - next_bump)
+    # Penalty for increased bumpiness, reward for smoothing
+    bump_change = next_bump - prev_bump
+    reward -= bump_change * 1.0  # 1 point penalty per bump increase
     
-    if next_height < prev_height:
-        reward += 0.01 * (prev_height - next_height)
+    # Small penalty for height increase (encourage keeping low)
+    height_change = next_height - prev_height
+    reward -= height_change * 0.1
     
     return reward

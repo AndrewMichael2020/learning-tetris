@@ -122,7 +122,7 @@ def enumerate_afterstates(env: TetrisEnv) -> List[Tuple[np.ndarray, Dict[str, An
                     lines_to_clear.append(row)
             
             # Calculate reward for this placement
-            reward = len(lines_to_clear) * 10  # Base line clear reward
+            reward = len(lines_to_clear) * 100  # Much higher line clear reward
             
             # Apply line clears
             if lines_to_clear:

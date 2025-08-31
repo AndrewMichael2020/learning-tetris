@@ -10,6 +10,23 @@ from .afterstate import enumerate_afterstates
 from .policy_store import save_policy
 
 
+def _stable_softmax(logits: np.ndarray, temperature: float) -> np.ndarray:
+    """Numerically stable softmax with temperature and gentle smoothing."""
+    if temperature <= 0:
+        temperature = 1.0
+    # Center and clip logits for numerical stability
+    l = logits.astype(np.float64)
+    l = l - np.max(l)
+    l = np.clip(l / temperature, -20.0, 20.0)
+    exp = np.exp(l)
+    p = exp / (np.sum(exp) + 1e-12)
+    # Ensure non-zero support to avoid dead actions
+    eps = 1e-3
+    p = (1.0 - eps * len(p)) * p + eps
+    p /= np.sum(p)
+    return p
+
+
 class REINFORCEPolicy:
     """Stochastic policy using softmax over linear feature weights."""
     
@@ -46,10 +63,18 @@ class REINFORCEPolicy:
             scores.append(score)
             afterstate_info.append(action_info)
         
-        # Convert to softmax probabilities
+        # Standardize scores to sensible range before softmax to fix distribution shape
         scores = np.array(scores)
-        exp_scores = np.exp(scores / self.temperature)
-        probabilities = exp_scores / np.sum(exp_scores)
+        mu = float(np.mean(scores))
+        sigma = float(np.std(scores))
+        if sigma < 1e-6:
+            logits = np.zeros_like(scores, dtype=np.float64)
+        else:
+            logits = (scores - mu) / (sigma + 1e-6)
+        
+        # Use stable softmax with clamped temperature
+        temperature = np.clip(self.temperature, 0.1, 10.0)
+        probabilities = _stable_softmax(logits, temperature)
         
         return afterstate_info, probabilities
     
@@ -152,8 +177,8 @@ def train(env_factory: Callable[[], TetrisEnv], episodes: int = 1000,
     """
     rng = np.random.default_rng(seed)
     
-    # Initialize policy with small random weights
-    weights = rng.normal(0, 0.1, size=feature_dim).astype(np.float32)
+    # Initialize policy with larger weights for better discrimination
+    weights = rng.normal(0, 0.2, size=feature_dim).astype(np.float32)
     policy = REINFORCEPolicy(weights, temperature)
     
     # Initialize baseline (exponential moving average of returns)

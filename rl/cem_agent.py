@@ -118,7 +118,8 @@ def evolve(env_factory: Callable[[], TetrisEnv], generations: int = 10,
     
     # Initialize population with random weights
     mean = np.zeros(feature_dim, dtype=np.float32)
-    std = np.ones(feature_dim, dtype=np.float32) * 0.5
+    # Even wider exploration for feature discrimination
+    std = np.ones(feature_dim, dtype=np.float32) * 2.0
     
     best_fitness = float('-inf')
     best_weights = None
@@ -131,6 +132,8 @@ def evolve(env_factory: Callable[[], TetrisEnv], generations: int = 10,
         population = []
         for i in range(population_size):
             candidate = rng.normal(mean, std).astype(np.float32)
+            # Allow larger weights for stronger feature discrimination
+            candidate = np.clip(candidate, -5.0, 5.0).astype(np.float32)
             population.append(candidate)
         
         # Evaluate population
@@ -153,7 +156,8 @@ def evolve(env_factory: Callable[[], TetrisEnv], generations: int = 10,
         # Update mean and std from elites
         elite_weights = np.array([population[i] for i in elite_indices])
         mean = np.mean(elite_weights, axis=0)
-        std = np.std(elite_weights, axis=0) + 1e-6  # Add small epsilon
+        # Maintain healthy exploration but avoid collapse/explosion
+        std = np.clip(np.std(elite_weights, axis=0), 0.15, 2.5).astype(np.float32)
         
         # Record metrics
         gen_best = fitness_scores[sorted_indices[0]]
@@ -171,8 +175,8 @@ def evolve(env_factory: Callable[[], TetrisEnv], generations: int = 10,
         print(f"Gen {generation+1}/{generations}: Best={gen_best:.1f}, "
               f"Mean={gen_mean:.1f}, Std={gen_std:.1f}")
         
-        # Decay standard deviation over time
-        std *= 0.95
+        # Decay standard deviation over time (slightly faster for convergence)
+        std *= 0.90
     
     # Save best policy
     if best_weights is not None:
