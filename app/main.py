@@ -635,6 +635,220 @@ async def websocket_play_once(websocket: WebSocket, seed: Optional[int] = None, 
             pass
 
 
+@app.websocket("/ws/train")
+async def websocket_train(websocket: WebSocket, algo: str = "cem", seed: Optional[int] = None):
+    """WebSocket endpoint for training with real-time progress updates and cancellation support."""
+    try:
+        await websocket.accept()
+        print(f"Training WebSocket accepted: algo={algo}, seed={seed}")
+        
+        if not config.train_enabled:
+            await websocket.send_json({"error": "Training is disabled"})
+            await websocket.close()
+            return
+
+        # Send initial status
+        await websocket.send_json({
+            "status": "starting", 
+            "message": f"Starting {algo.upper()} training...",
+            "algo": algo,
+            "progress": 0
+        })
+
+        start_time = time.time()
+        env_factory = create_env_factory()
+        training_cancelled = False
+        
+        try:
+            if algo == "cem":
+                # Import the training function that supports progress callbacks
+                from rl.cem_agent import evolve_with_progress
+                
+                # Default parameters for quick training
+                generations = 10
+                population_size = 20
+                episodes_per_candidate = 2
+                
+                best_performance = 0.0
+                
+                # Progress callback function
+                async def progress_callback(generation, best_fitness, population_fitness):
+                    nonlocal training_cancelled, best_performance
+                    best_performance = max(best_performance, best_fitness)
+                    
+                    progress = (generation + 1) / generations * 100
+                    await websocket.send_json({
+                        "status": "training",
+                        "message": f"Generation {generation+1}/{generations}: Best fitness = {best_fitness:.1f}",
+                        "algo": algo,
+                        "progress": progress,
+                        "best_performance": float(best_performance),
+                        "generation": generation + 1,
+                        "total_generations": generations
+                    })
+                    
+                    # Check if client disconnected (training should be cancelled)
+                    return not training_cancelled
+                
+                # Run CEM with progress updates
+                result = await evolve_with_progress(
+                    env_factory=env_factory,
+                    generations=generations,
+                    seed=seed or 42,
+                    out_path=config.policy_path,
+                    episodes_per_candidate=episodes_per_candidate,
+                    population_size=population_size,
+                    progress_callback=progress_callback
+                )
+                
+                if not training_cancelled:
+                    best_performance = result['best_fitness']
+                
+            elif algo == "reinforce":
+                # Import the training function that supports progress callbacks
+                from rl.reinforce_agent import train_with_progress
+                
+                # Default parameters for quick training
+                episodes = 100
+                learning_rate = 0.001
+                
+                best_performance = 0.0
+                
+                # Progress callback function
+                async def progress_callback(episode, episode_reward, best_reward):
+                    nonlocal training_cancelled, best_performance
+                    best_performance = max(best_performance, best_reward)
+                    
+                    progress = (episode + 1) / episodes * 100
+                    await websocket.send_json({
+                        "status": "training",
+                        "message": f"Episode {episode+1}/{episodes}: Reward = {episode_reward:.1f}, Best = {best_reward:.1f}",
+                        "algo": algo,
+                        "progress": progress,
+                        "best_performance": float(best_performance),
+                        "episode": episode + 1,
+                        "total_episodes": episodes
+                    })
+                    
+                    # Check if client disconnected (training should be cancelled)
+                    return not training_cancelled
+                
+                # Run REINFORCE with progress updates
+                result = await train_with_progress(
+                    env_factory=env_factory,
+                    episodes=episodes,
+                    seed=seed or 42,
+                    out_path=config.policy_path,
+                    learning_rate=learning_rate,
+                    progress_callback=progress_callback
+                )
+                
+                if not training_cancelled:
+                    best_performance = result['best_reward']
+                
+            else:
+                # For other algorithms, do a quick evaluation like the HTTP endpoint
+                from .agent_factory import make_agent, get_default_params
+                
+                params = get_default_params(algo)
+                agent = make_agent(algo, params)
+                
+                if agent is None:
+                    raise ValueError(f"Failed to create {algo} agent")
+                
+                await websocket.send_json({
+                    "status": "training",
+                    "message": f"Evaluating {algo.upper()} agent...",
+                    "algo": algo,
+                    "progress": 50
+                })
+                
+                # Run quick evaluation
+                env = env_factory()
+                env.reset(seed=seed or 42)
+                agent.reset()
+                
+                steps = 0
+                max_steps = 200
+                
+                while not env.game_over and steps < max_steps and not training_cancelled:
+                    try:
+                        col, rotation = agent.select_action(env)
+                        success = execute_placement(env, col, rotation)
+                        
+                        if not success:
+                            break
+                        
+                        steps += 1
+                        
+                        if not env.game_over:
+                            env._spawn_piece()
+                            
+                        # Send periodic progress updates
+                        if steps % 20 == 0:
+                            progress = (steps / max_steps) * 100
+                            await websocket.send_json({
+                                "status": "training",
+                                "message": f"Evaluating {algo.upper()}: Step {steps}/{max_steps}",
+                                "algo": algo,
+                                "progress": progress + 50  # Second half of progress
+                            })
+                            
+                    except Exception as e:
+                        print(f"Error during evaluation: {e}")
+                        break
+                
+                best_performance = env.score + env.lines_cleared * 100
+            
+            if training_cancelled:
+                await websocket.send_json({
+                    "status": "cancelled",
+                    "message": "Training was cancelled",
+                    "algo": algo,
+                    "progress": 0
+                })
+            else:
+                # Training completed successfully
+                if algo in ["cem", "reinforce"]:
+                    load_policy()  # Reload policy after training
+                
+                training_time = time.time() - start_time
+                
+                await websocket.send_json({
+                    "status": "completed",
+                    "message": f"Training completed! Best performance: {best_performance:.1f}",
+                    "algo": algo,
+                    "progress": 100,
+                    "best_performance": float(best_performance),
+                    "training_time": float(training_time)
+                })
+                
+        except Exception as e:
+            print(f"Training error: {e}")
+            await websocket.send_json({
+                "status": "error",
+                "message": f"Training failed: {str(e)}",
+                "algo": algo,
+                "progress": 0
+            })
+            
+    except WebSocketDisconnect:
+        print("Training WebSocket disconnected - cancelling training")
+        training_cancelled = True
+    except Exception as e:
+        print(f"Exception in training WebSocket: {e}")
+        try:
+            await websocket.send_json({"error": str(e)})
+        except:
+            pass
+    finally:
+        try:
+            await websocket.close()
+            print("Training WebSocket closed")
+        except:
+            pass
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=config.port)

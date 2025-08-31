@@ -13,6 +13,7 @@ class TetrisApp {
         this.websocket = null;
         this.playOnceWebSocket = null;
         this.playMultipleWebSocket = null;
+        this.quickTrainWebSocket = null;
         this.isStreaming = false;
         this.currentGame = null;
         this.debugMode = false; // Set to true to enable debug logging
@@ -98,9 +99,9 @@ class TetrisApp {
     setupEventListeners() {
         // Button event listeners
         this.elements.streamBtn.addEventListener('click', () => this.toggleStream());
-        this.elements.playOnceBtn.addEventListener('click', () => this.playOnce());
-        this.elements.playMultipleBtn.addEventListener('click', () => this.playEpisodes());
-        this.elements.quickTrainBtn.addEventListener('click', () => this.quickTrain());
+        this.elements.playOnceBtn.addEventListener('click', () => this.togglePlayOnce());
+        this.elements.playMultipleBtn.addEventListener('click', () => this.togglePlayMultiple());
+        this.elements.quickTrainBtn.addEventListener('click', () => this.toggleQuickTrain());
         this.elements.clearResultsBtn.addEventListener('click', () => this.resetStats());
         
         // Algorithm change listeners (both play and training)
@@ -301,19 +302,106 @@ class TetrisApp {
         }
     }
     
+    togglePlayOnce() {
+        // If currently playing, stop the game
+        if (this.playOnceWebSocket && this.playOnceWebSocket.readyState === WebSocket.OPEN) {
+            this.stopPlayOnce();
+        } else {
+            // Otherwise, start playing
+            this.playOnce();
+        }
+    }
+    
+    stopPlayOnce() {
+        if (this.playOnceWebSocket) {
+            this.log('Stopping Play Once game...', 'info');
+            this.playOnceWebSocket.close();
+            this.playOnceWebSocket = null;
+        }
+        
+        // Reset button states and UI
+        this.elements.playOnceBtn.textContent = 'Play Once';
+        this.elements.playOnceBtn.disabled = false;
+        this.elements.playMultipleBtn.disabled = false;
+        this.elements.gameStatus.textContent = 'Stopped';
+        
+        // Clear the canvas
+        this.drawEmptyBoard();
+        
+        this.log('Play Once game stopped', 'info');
+    }
+    
+    togglePlayMultiple() {
+        // If currently playing, stop the game
+        if (this.playMultipleWebSocket && this.playMultipleWebSocket.readyState === WebSocket.OPEN) {
+            this.stopPlayMultiple();
+        } else {
+            // Otherwise, start playing
+            this.playEpisodes();
+        }
+    }
+    
+    stopPlayMultiple() {
+        if (this.playMultipleWebSocket) {
+            this.log('Stopping Play Multiple game...', 'info');
+            this.playMultipleWebSocket.close();
+            this.playMultipleWebSocket = null;
+        }
+        
+        // Reset button states and UI
+        this.elements.playMultipleBtn.textContent = 'Play Multiple';
+        this.elements.playOnceBtn.disabled = false;
+        this.elements.playMultipleBtn.disabled = false;
+        this.elements.gameStatus.textContent = 'Stopped';
+        
+        // Clear the canvas
+        this.drawEmptyBoard();
+        
+        this.log('Play Multiple game stopped', 'info');
+    }
+
+    toggleQuickTrain() {
+        // If currently training, stop the training
+        if (this.quickTrainWebSocket && this.quickTrainWebSocket.readyState === WebSocket.OPEN) {
+            this.stopQuickTrain();
+        } else {
+            // Otherwise, start training
+            this.startQuickTrain();
+        }
+    }
+    
+    stopQuickTrain() {
+        if (this.quickTrainWebSocket) {
+            this.log('Stopping Quick Train...', 'info');
+            this.quickTrainWebSocket.close();
+            this.quickTrainWebSocket = null;
+        }
+        
+        // Reset button states and UI
+        this.elements.quickTrainBtn.textContent = 'Quick Train';
+        this.elements.quickTrainBtn.disabled = false;
+        this.elements.gameStatus.textContent = 'Training Stopped';
+        
+        // Clear the canvas and reset results
+        this.drawEmptyBoard();
+        this.resetStats();
+        
+        this.log('Quick Train stopped', 'info');
+    }
+
     async playOnce() {
         // Always play exactly 1 episode but use other control settings
         const seed = this.elements.seed.value ? parseInt(this.elements.seed.value) : null;
         const algo = this.elements.algorithm.value;
         
-        this.elements.playOnceBtn.disabled = true;
+        // Change button to "Stop" and disable multiple play
+        this.elements.playOnceBtn.textContent = 'Stop';
+        this.elements.playOnceBtn.disabled = false;  // Keep enabled so user can stop
         this.elements.playMultipleBtn.disabled = true;
         this.elements.gameStatus.textContent = 'Playing...';
-        
+
         // Clear canvas and show we're starting
-        this.drawEmptyBoard();
-        
-        // Reset current stats
+        this.drawEmptyBoard();        // Reset current stats
         this.elements.currentScore.textContent = '0';
         this.elements.currentLines.textContent = '0';
         this.elements.currentSteps.textContent = '0';
@@ -420,12 +508,15 @@ class TetrisApp {
                         const finalLines = data.lines || 0;
                         this.addEpisode(finalScore, finalLines);
                         
-                        // Update game status
+                        // Update game status and button text
                         const gameStatusEl = document.getElementById('gameStatus');
                         if (gameStatusEl) {
                             gameStatusEl.textContent = 'Completed';
                             console.log('✅ gameStatus updated to: Completed');
                         }
+                        
+                        // Reset button text when game completes
+                        this.elements.playOnceBtn.textContent = 'Play Once';
                         
                         this.log(`Episode completed! Score: ${finalScore}, Lines: ${finalLines}`, 'success');
                     }
@@ -437,6 +528,7 @@ class TetrisApp {
             
             this.playOnceWebSocket.onclose = () => {
                 this.playOnceWebSocket = null;
+                this.elements.playOnceBtn.textContent = 'Play Once';
                 this.elements.playOnceBtn.disabled = false;
                 this.elements.playMultipleBtn.disabled = false;
                 
@@ -448,13 +540,15 @@ class TetrisApp {
             this.playOnceWebSocket.onerror = (error) => {
                 this.log('Play Once WebSocket error: ' + error.message, 'error');
                 this.elements.gameStatus.textContent = 'Error';
+                this.elements.playOnceBtn.textContent = 'Play Once';
                 this.elements.playOnceBtn.disabled = false;
                 this.elements.playMultipleBtn.disabled = false;
             };
-            
+
         } catch (error) {
             this.log('Play Once failed: ' + error.message, 'error');
             this.elements.gameStatus.textContent = 'Error';
+            this.elements.playOnceBtn.textContent = 'Play Once';
             this.elements.playOnceBtn.disabled = false;
             this.elements.playMultipleBtn.disabled = false;
         }
@@ -465,8 +559,10 @@ class TetrisApp {
         const seed = this.elements.seed.value ? parseInt(this.elements.seed.value) : null;
         const algo = this.elements.algorithm.value;
         
+        // Change button to "Stop" and disable play once
         this.elements.playOnceBtn.disabled = true;
-        this.elements.playMultipleBtn.disabled = true;
+        this.elements.playMultipleBtn.textContent = 'Stop';
+        this.elements.playMultipleBtn.disabled = false;  // Keep enabled so user can stop
         this.elements.gameStatus.textContent = 'Playing...';
         
         // Clear canvas and show we're starting
@@ -548,6 +644,7 @@ class TetrisApp {
                 // Handle final completion
                 if (data.final) {
                     this.elements.gameStatus.textContent = 'Completed';
+                    this.elements.playMultipleBtn.textContent = 'Play Multiple';
                     this.log(`All ${episodes} episodes completed! Episodes in history: ${this.episodeHistory.length}`, 'success');
                 }
             };
@@ -555,6 +652,7 @@ class TetrisApp {
             this.playMultipleWebSocket.onclose = () => {
                 this.playMultipleWebSocket = null;
                 this.elements.playOnceBtn.disabled = false;
+                this.elements.playMultipleBtn.textContent = 'Play Multiple';
                 this.elements.playMultipleBtn.disabled = false;
                 
                 if (this.elements.gameStatus.textContent.startsWith('Playing')) {
@@ -566,94 +664,141 @@ class TetrisApp {
                 this.log('Play Multiple WebSocket error: ' + error.message, 'error');
                 this.elements.gameStatus.textContent = 'Error';
                 this.elements.playOnceBtn.disabled = false;
+                this.elements.playMultipleBtn.textContent = 'Play Multiple';
                 this.elements.playMultipleBtn.disabled = false;
             };
-            
+
         } catch (error) {
             this.log('Play Multiple failed: ' + error.message, 'error');
             this.elements.gameStatus.textContent = 'Error';
             this.elements.playOnceBtn.disabled = false;
+            this.elements.playMultipleBtn.textContent = 'Play Multiple';
             this.elements.playMultipleBtn.disabled = false;
         }
     }
     
-    async quickTrain() {
+    async startQuickTrain() {
         const algo = this.elements.trainAlgo.value;
         const seed = parseInt(this.elements.trainSeed.value);
         
-        let requestBody = { algo, seed };
+        // Reset stats at start of new training
+        this.resetStats();
         
-        if (algo === 'cem') {
-            requestBody.generations = parseInt(this.elements.generations.value);
-            requestBody.population_size = parseInt(this.elements.populationSize.value);
-            requestBody.episodes_per_candidate = 2; // Fixed for quick training
-        } else if (algo === 'reinforce') {
-            requestBody.episodes = parseInt(this.elements.trainEpisodes.value);
-            requestBody.learning_rate = parseFloat(this.elements.learningRate.value);
-        } else {
-            // New algorithms - collect their specific parameters
-            requestBody.params = this.collectAlgorithmParams(algo);
-        }
-        
-        this.elements.quickTrainBtn.disabled = true;
-        this.elements.gameStatus.textContent = 'Training...';
+        // Change button to "Stop" 
+        this.elements.quickTrainBtn.textContent = 'Stop';
+        this.elements.quickTrainBtn.disabled = false; // Keep enabled so user can stop
+        this.elements.gameStatus.textContent = 'Starting Training...';
         this.log(`Starting ${algo.toUpperCase()} training...`, 'warning');
         
-        // Show initial training info in Activity Log
-        if (algo === 'cem') {
-            this.log(`Starting CEM evolution: ${requestBody.generations} generations, ${requestBody.population_size} population`, 'info');
-        } else if (algo === 'reinforce') {
-            this.log(`Starting REINFORCE training: ${requestBody.episodes} episodes, LR=${requestBody.learning_rate}`, 'info');
-        } else {
-            this.log(`Configuring ${this.getAlgorithmDisplayName(algo)} with optimized parameters`, 'info');
-            console.log('Training request body:', requestBody); // Debug log
-        }
-        
-        // Show training visualization
-        this.showTrainingProgress();
-        
-        // Simulate training progress updates in Activity Log
-        this.simulateTrainingProgress(algo, requestBody);
-        
         try {
-            const response = await fetch('/api/train', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(requestBody)
+            // Create WebSocket URL with parameters
+            const params = new URLSearchParams({
+                algo: algo,
+                seed: seed.toString()
             });
             
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-            }
+            const wsUrl = `ws://localhost:8000/ws/train?${params.toString()}`;
+            console.log('Connecting to training WebSocket:', wsUrl);
             
-            const result = await response.json();
+            this.quickTrainWebSocket = new WebSocket(wsUrl);
             
-            if (result.success) {
-                this.elements.gameStatus.textContent = 'Training Complete';
-                this.log(`Training completed! Best performance: ${result.best_performance.toFixed(1)} (${result.training_time.toFixed(1)}s)`, 'success');
-                
-                // Show final trained state
-                this.elements.currentScore.textContent = Math.round(result.best_performance);
-                this.elements.currentLines.textContent = Math.round(result.best_performance / 40);
-                this.elements.currentSteps.textContent = '500';
-                this.renderBoardDirectly(null);
-                
-                // Refresh health to update policy status
-                await this.checkHealth();
-            } else {
-                this.elements.gameStatus.textContent = 'Training Failed';
-                this.log('Training failed: ' + (result.message || 'Unknown error'), 'error');
-                console.error('Training error details:', result);
-                this.drawEmptyBoard();
-            }
+            this.quickTrainWebSocket.onopen = () => {
+                console.log('Training WebSocket connected');
+                this.elements.gameStatus.textContent = 'Training Connected';
+                this.log('Training WebSocket connected', 'success');
+            };
+            
+            this.quickTrainWebSocket.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    console.log('Training progress:', data);
+                    
+                    if (data.error) {
+                        this.log('Training error: ' + data.error, 'error');
+                        this.elements.gameStatus.textContent = 'Training Error';
+                        this.stopQuickTrain();
+                        return;
+                    }
+                    
+                    // Handle training progress updates
+                    if (data.status === 'starting') {
+                        this.elements.gameStatus.textContent = data.message;
+                        this.log(data.message, 'info');
+                        this.showTrainingProgress();
+                    } else if (data.status === 'training') {
+                        this.elements.gameStatus.textContent = data.message;
+                        this.log(data.message, 'info');
+                        
+                        // Update progress visualization
+                        this.updateTrainingProgress(data.progress || 0);
+                        
+                        // Update performance metrics if available
+                        if (data.best_performance !== undefined) {
+                            this.elements.currentScore.textContent = Math.round(data.best_performance);
+                            this.elements.currentLines.textContent = Math.round(data.best_performance / 40);
+                        }
+                    } else if (data.status === 'completed') {
+                        this.elements.gameStatus.textContent = 'Training Complete';
+                        this.log(`Training completed! ${data.message}`, 'success');
+                        
+                        // Show final results
+                        if (data.best_performance !== undefined) {
+                            this.elements.currentScore.textContent = Math.round(data.best_performance);
+                            this.elements.currentLines.textContent = Math.round(data.best_performance / 40);
+                            this.elements.currentSteps.textContent = '500';
+                        }
+                        
+                        // Show completed visualization
+                        this.renderBoardDirectly(null);
+                        
+                        // Reset button state
+                        this.elements.quickTrainBtn.textContent = 'Quick Train';
+                        this.elements.quickTrainBtn.disabled = false;
+                        
+                        // Close WebSocket
+                        this.quickTrainWebSocket = null;
+                        
+                        // Refresh health to update policy status
+                        this.checkHealth();
+                    } else if (data.status === 'cancelled') {
+                        this.elements.gameStatus.textContent = 'Training Cancelled';
+                        this.log(data.message, 'warning');
+                        this.stopQuickTrain();
+                    } else if (data.status === 'error') {
+                        this.elements.gameStatus.textContent = 'Training Failed';
+                        this.log('Training failed: ' + data.message, 'error');
+                        this.stopQuickTrain();
+                    }
+                } catch (error) {
+                    console.error('Error parsing training WebSocket message:', error);
+                    this.log('Training WebSocket message error: ' + error.message, 'error');
+                }
+            };
+            
+            this.quickTrainWebSocket.onclose = () => {
+                console.log('Training WebSocket closed');
+                if (this.elements.quickTrainBtn.textContent === 'Stop') {
+                    // Training was stopped by user or completed
+                    this.elements.quickTrainBtn.textContent = 'Quick Train';
+                    this.elements.quickTrainBtn.disabled = false;
+                }
+                this.quickTrainWebSocket = null;
+            };
+            
+            this.quickTrainWebSocket.onerror = (error) => {
+                console.error('Training WebSocket error:', error);
+                this.log('Training WebSocket error', 'error');
+                this.elements.gameStatus.textContent = 'Training Connection Error';
+                this.stopQuickTrain();
+            };
             
         } catch (error) {
-            console.error('Training request failed:', error);
-            this.log('Training failed: ' + error.message, 'error');
-            this.elements.gameStatus.textContent = 'Error';
-            this.drawEmptyBoard();
-        } finally {
+            console.error('Failed to start training:', error);
+            this.log('Failed to start training: ' + error.message, 'error');
+            this.elements.gameStatus.textContent = 'Training Failed';
+            this.elements.quickTrainBtn.textContent = 'Quick Train';
             this.elements.quickTrainBtn.disabled = false;
+            this.drawEmptyBoard();
         }
     }
     
@@ -763,6 +908,38 @@ class TetrisApp {
         }, algo === 'cem' ? 1000 : (algo === 'reinforce' ? 800 : 500)); // New algorithms are faster
     }
     
+    updateTrainingProgress(progress) {
+        // Update training progress bar with real progress (0-100)
+        const clampedProgress = Math.max(0, Math.min(100, progress)) / 100; // Ensure 0-1 range
+        
+        // Clear canvas
+        this.ctx.fillStyle = '#000';
+        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+        
+        // Draw training progress visualization
+        const barHeight = 20;
+        const barY = this.canvas.height / 2 - barHeight / 2;
+        const barWidth = this.canvas.width * 0.8;
+        const barX = this.canvas.width * 0.1;
+        
+        // Progress bar background
+        this.ctx.fillStyle = '#374151';
+        this.ctx.fillRect(barX, barY, barWidth, barHeight);
+        
+        // Progress bar fill
+        this.ctx.fillStyle = '#4f46e5';
+        this.ctx.fillRect(barX, barY, barWidth * clampedProgress, barHeight);
+        
+        // Training text
+        this.ctx.fillStyle = '#ffffff';
+        this.ctx.font = '16px Arial';
+        this.ctx.textAlign = 'center';
+        this.ctx.fillText('Training AI...', this.canvas.width / 2, barY - 10);
+        
+        // Progress percentage
+        this.ctx.fillText(`${Math.round(progress)}%`, this.canvas.width / 2, barY + barHeight + 25);
+    }
+
     toggleStream() {
         if (this.isStreaming) {
             this.stopStream();

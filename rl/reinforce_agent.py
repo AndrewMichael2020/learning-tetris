@@ -275,3 +275,298 @@ def train(env_factory: Callable[[], TetrisEnv], episodes: int = 1000,
         'final_weights': weights,
         'final_baseline': baseline
     }
+
+
+async def train_with_progress(env_factory: Callable[[], TetrisEnv], episodes: int = 1000,
+                             seed: int = 42, out_path: str = "policies/best.npz",
+                             learning_rate: float = 0.01, baseline_alpha: float = 0.1,
+                             temperature: float = 1.0, feature_dim: int = 17,
+                             progress_callback: Optional[Callable] = None) -> Dict[str, Any]:
+    """
+    Async version of train with progress callback support.
+    
+    Args:
+        env_factory: Function that creates TetrisEnv instances
+        episodes: Number of episodes to train
+        seed: Random seed
+        out_path: Path to save best policy
+        learning_rate: Learning rate for policy updates
+        baseline_alpha: Learning rate for baseline (EMA of returns)
+        temperature: Softmax temperature
+        feature_dim: Dimension of feature vector
+        progress_callback: Optional async callback for progress updates
+        
+    Returns:
+        Dictionary with training metrics
+    """
+    import asyncio
+    
+    rng = np.random.default_rng(seed)
+    
+    # Initialize policy with larger weights for better discrimination
+    weights = rng.normal(0, 0.2, size=feature_dim).astype(np.float32)
+    policy = REINFORCEPolicy(weights, temperature)
+    
+    # Initialize baseline (exponential moving average of returns)
+    baseline = 0.0
+    
+    # Training metrics
+    episode_rewards = []
+    episode_lengths = []
+    baseline_history = []
+    best_reward = float('-inf')
+    best_weights = None
+    
+    print(f"Starting async REINFORCE training: {episodes} episodes")
+    
+    for episode in range(episodes):
+        env = env_factory()
+        
+        # Collect episode
+        episode_data, total_reward = collect_episode(policy, env, rng)
+        
+        if len(episode_data) == 0:
+            continue  # Skip empty episodes
+        
+        # Update baseline (exponential moving average)
+        if episode == 0:
+            baseline = total_reward
+        else:
+            baseline = (1 - baseline_alpha) * baseline + baseline_alpha * total_reward
+        
+        # Calculate advantages and policy gradient
+        advantage = total_reward - baseline
+        
+        # Policy gradient update
+        gradient = np.zeros_like(weights)
+        
+        for step_data in episode_data:
+            # Calculate gradient for this step
+            state_features = step_data['state_features']
+            log_prob = step_data['log_prob']
+            
+            # REINFORCE gradient: advantage * grad log π(a|s)
+            action_idx = step_data['action_idx']
+            action_probs = step_data['action_probs']
+            
+            # Simplified gradient calculation
+            gradient += advantage * state_features * log_prob
+        
+        # Apply gradient update
+        weights += learning_rate * gradient / len(episode_data)
+        policy.weights = weights.copy()
+        
+        # Track metrics
+        episode_rewards.append(total_reward)
+        episode_lengths.append(len(episode_data))
+        baseline_history.append(baseline)
+        
+        # Track best policy
+        if total_reward > best_reward:
+            best_reward = total_reward
+            best_weights = weights.copy()
+        
+        # Print progress periodically
+        if (episode + 1) % 10 == 0 or episode == 0:
+            recent_rewards = episode_rewards[-100:]
+            mean_reward = np.mean(recent_rewards)
+            print(f"Episode {episode+1}/{episodes}: "
+                  f"Reward={total_reward:.1f}, "
+                  f"Mean(100)={mean_reward:.1f}, "
+                  f"Baseline={baseline:.1f}")
+        
+        # Send progress update
+        if progress_callback:
+            should_continue = await progress_callback(episode, total_reward, best_reward)
+            if not should_continue:
+                print("Training cancelled by progress callback")
+                break
+        
+        # Allow event loop to process other tasks
+        if episode % 10 == 0:  # Less frequent than CEM to avoid too much overhead
+            await asyncio.sleep(0.01)
+    
+    # Save best policy
+    if best_weights is not None:
+        policy_dict = {'linear_weights': best_weights}
+        metadata = {
+            'algorithm': 'REINFORCE',
+            'episodes': episodes,
+            'learning_rate': learning_rate,
+            'baseline_alpha': baseline_alpha,
+            'temperature': temperature,
+            'best_reward': float(best_reward),
+            'final_baseline': float(baseline),
+            'seed': seed
+        }
+        save_policy(policy_dict, out_path, metadata)
+        print(f"Saved best policy to {out_path} (reward: {best_reward:.1f})")
+    
+    return {
+        'episode_rewards': episode_rewards,
+        'episode_lengths': episode_lengths,
+        'baseline_history': baseline_history,
+        'best_reward': best_reward,
+        'best_weights': best_weights,
+        'final_weights': weights,
+        'final_baseline': baseline
+    }
+
+
+async def train_with_progress(env_factory, episodes=1000, seed=42, out_path="policies/best.npz",
+                             learning_rate=0.001, progress_callback=None):
+    """Async version of train with progress callbacks and cancellation support."""
+    import asyncio
+    
+    rng = np.random.default_rng(seed)
+    
+    # Initialize policy with random weights (higher variance for better exploration)
+    feature_dim = 17
+    weights = rng.normal(0, 0.2, feature_dim).astype(np.float32)
+    
+    best_reward = float('-inf')
+    best_weights = None
+    reward_history = []
+    
+    print(f"Starting async REINFORCE training: {episodes} episodes, LR={learning_rate}")
+    
+    for episode in range(episodes):
+        # Create environment
+        env = env_factory()
+        env.reset(seed=rng.integers(0, 1000000))
+        
+        # Collect episode data
+        states = []
+        actions = []
+        rewards = []
+        
+        while not env.game_over:
+            # Current board state
+            current_state = board_to_features(env.board, env.current_piece, env.lines_cleared)
+            states.append(current_state)
+            
+            # Get all possible placements for current piece
+            valid_placements = []
+            placement_features = []
+            
+            for col in range(env.width):
+                for rotation in range(4):
+                    try:
+                        temp_env = env.copy()
+                        success = execute_placement(temp_env, col, rotation)
+                        if success:
+                            afterstate_features = board_to_features(
+                                temp_env.board, None, temp_env.lines_cleared
+                            )
+                            valid_placements.append((col, rotation))
+                            placement_features.append(afterstate_features)
+                    except:
+                        continue
+            
+            if not valid_placements:
+                break
+            
+            # Compute action probabilities
+            logits = [np.dot(weights, features) for features in placement_features]
+            probs = stable_softmax(np.array(logits))
+            
+            # Sample action
+            action_idx = rng.choice(len(valid_placements), p=probs)
+            col, rotation = valid_placements[action_idx]
+            actions.append(action_idx)
+            
+            # Execute action and get reward
+            old_score = env.score
+            old_lines = env.lines_cleared
+            success = execute_placement(env, col, rotation)
+            
+            if not success:
+                break
+            
+            # Calculate reward using reward shaping
+            reward = reward_shaping(env.board, env.score - old_score, env.lines_cleared - old_lines)
+            rewards.append(reward)
+            
+            if not env.game_over:
+                env._spawn_piece()
+        
+        episode_reward = sum(rewards)
+        
+        # Track best policy
+        if episode_reward > best_reward:
+            best_reward = episode_reward
+            best_weights = weights.copy()
+        
+        reward_history.append({
+            'episode': episode,
+            'reward': episode_reward,
+            'best_reward': best_reward
+        })
+        
+        # Policy gradient update
+        if len(rewards) > 0:
+            returns = compute_returns(rewards, gamma=0.99)
+            
+            # Standardize returns
+            if len(returns) > 1:
+                returns = (returns - np.mean(returns)) / (np.std(returns) + 1e-8)
+            
+            # Update weights
+            for t in range(len(states)):
+                state = states[t]
+                action_idx = actions[t]
+                G = returns[t]
+                
+                # Current action probabilities
+                valid_placements = []
+                placement_features = []
+                
+                # Recalculate valid placements for this state (simplified)
+                for col in range(10):  # env.width
+                    for rotation in range(4):
+                        valid_placements.append((col, rotation))
+                        placement_features.append(state)  # Use state as approximation
+                
+                logits = [np.dot(weights, features) for features in placement_features]
+                probs = stable_softmax(np.array(logits))
+                
+                # Gradient update
+                for i, features in enumerate(placement_features):
+                    if i == action_idx:
+                        grad = learning_rate * G * features * (1 - probs[i])
+                    else:
+                        grad = -learning_rate * G * features * probs[i]
+                    weights += grad
+        
+        # Call progress callback if provided
+        if progress_callback and episode % 10 == 0:
+            should_continue = await progress_callback(episode, episode_reward, best_reward)
+            if not should_continue:
+                print("Training cancelled by progress callback")
+                break
+        
+        # Print progress
+        if episode % 100 == 0:
+            print(f"Episode {episode}/{episodes}: Reward={episode_reward:.1f}, Best={best_reward:.1f}")
+        
+        await asyncio.sleep(0.001)  # Allow other tasks
+    
+    # Save best policy
+    if best_weights is not None:
+        policy_dict = {'linear_weights': best_weights}
+        metadata = {
+            'algorithm': 'REINFORCE',
+            'episodes': episodes,
+            'learning_rate': learning_rate,
+            'best_reward': float(best_reward),
+            'seed': seed
+        }
+        save_policy(policy_dict, out_path, metadata)
+        print(f"Saved best policy to {out_path} (best reward: {best_reward:.1f})")
+    
+    return {
+        'best_reward': best_reward,
+        'best_weights': best_weights,
+        'reward_history': reward_history,
+        'final_weights': weights
+    }
