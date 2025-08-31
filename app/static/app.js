@@ -48,6 +48,9 @@ class TetrisApp {
         
         // Draw initial empty board
         this.drawEmptyBoard();
+        
+        // Initialize Quick Training toggle state
+        this.initializeQuickTrainingToggle();
     }
     
     initializeElements() {
@@ -85,6 +88,10 @@ class TetrisApp {
             trainEpisodes: document.getElementById('trainEpisodes'),
             learningRate: document.getElementById('learningRate'),
             
+            // Quick Training Toggle
+            quickTrainingToggle: document.getElementById('quickTrainingToggle'),
+            toggleStatus: document.getElementById('toggleStatus'),
+            
             // Activity Log
             activityLog: document.getElementById('activityLog')
         };
@@ -109,6 +116,9 @@ class TetrisApp {
         this.elements.playMultipleBtn.addEventListener('click', () => this.togglePlayMultiple());
         this.elements.quickTrainBtn.addEventListener('click', () => this.toggleQuickTrain());
         this.elements.clearResultsBtn.addEventListener('click', () => this.resetStats());
+        
+        // Quick Training Toggle
+        this.elements.quickTrainingToggle.addEventListener('change', (e) => this.toggleQuickTraining(e.target.checked));
         
         // Algorithm change listeners (both play and training)
         this.elements.algorithm.addEventListener('change', () => this.updatePlayControls());
@@ -203,6 +213,36 @@ class TetrisApp {
         }
     }
     
+    initializeQuickTrainingToggle() {
+        // Set initial state based on checkbox (default is checked=true in HTML)
+        const isEnabled = this.elements.quickTrainingToggle?.checked ?? true;
+        this.toggleQuickTraining(isEnabled);
+    }
+    
+    toggleQuickTraining(enabled) {
+        const quickTrainBtn = this.elements.quickTrainBtn;
+        const toggleStatus = this.elements.toggleStatus;
+        
+        if (enabled) {
+            // Enable Quick Training
+            quickTrainBtn.classList.remove('hidden');
+            toggleStatus.textContent = 'ON';
+            toggleStatus.classList.remove('off');
+            this.logActivity('🔧', 'SETTINGS', 'Quick Training enabled');
+        } else {
+            // Disable Quick Training
+            quickTrainBtn.classList.add('hidden');
+            toggleStatus.textContent = 'OFF';
+            toggleStatus.classList.add('off');
+            this.logActivity('🔧', 'SETTINGS', 'Quick Training disabled');
+            
+            // If Quick Train is currently active, stop it
+            if (this.activeOperation === 'quickTrain') {
+                this.toggleQuickTrain(); // This will stop the current training
+            }
+        }
+    }
+    
     updateButtonStates() {
         const buttons = [
             { element: this.elements.streamBtn, operation: 'stream' },
@@ -213,6 +253,19 @@ class TetrisApp {
         
         buttons.forEach(({ element, operation }) => {
             if (!element) return;
+            
+            // Special handling for Quick Train button - check toggle state
+            if (operation === 'quickTrain') {
+                const toggleEnabled = this.elements.quickTrainingToggle?.checked;
+                if (!toggleEnabled) {
+                    // If toggle is off, keep the button hidden
+                    element.classList.add('hidden');
+                    return;
+                } else {
+                    // If toggle is on, make sure button is visible
+                    element.classList.remove('hidden');
+                }
+            }
             
             if (this.activeOperation === null) {
                 // No active operation - enable all buttons
