@@ -415,7 +415,63 @@ header p {
     }
 }
 
-/* Decorative Separator */
+/* Component Separator */
+.component-separator {
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--border-color), transparent);
+    margin: 25px 0 20px 0;
+    position: relative;
+}
+
+.component-separator::before {
+    content: '';
+    position: absolute;
+    top: -1px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 30px;
+    height: 3px;
+    background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
+    border-radius: 2px;
+}
+
+/* Quick Training Component */
+.quick-training-component {
+    background: linear-gradient(135deg, #f8fafc, #f1f5f9);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 20px;
+    margin-top: 15px;
+}
+
+.component-header {
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+.component-header h3 {
+    color: var(--primary-color);
+    margin-bottom: 8px;
+    font-size: 1.2em;
+    font-weight: 600;
+}
+
+.component-divider {
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--primary-color), transparent);
+    border-radius: 1px;
+    opacity: 0.3;
+}
+
+.component-description {
+    text-align: center;
+    color: var(--secondary-color);
+    font-size: 0.9em;
+    margin-top: 15px;
+    line-height: 1.4;
+}
+
+/* Decorative Separator (legacy - keeping for compatibility) */
 .separator {
     height: 2px;
     background: linear-gradient(90deg, transparent, var(--border-color), transparent);
@@ -435,7 +491,7 @@ header p {
     border-radius: 3px;
 }
 
-/* Quick Training Toggle */
+/* Quick Training Toggle (legacy - updated for new component) */
 .quick-training-toggle {
     padding: 15px 0;
 }
@@ -531,4 +587,7 @@ input:checked + .slider:before {
 /* Quick Train Button Visibility */
 #quickTrainBtn.hidden {
     display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
 }

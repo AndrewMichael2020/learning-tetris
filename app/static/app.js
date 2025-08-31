@@ -226,21 +226,27 @@ class TetrisApp {
         if (enabled) {
             // Enable Quick Training
             quickTrainBtn.classList.remove('hidden');
+            quickTrainBtn.style.display = '';  // Reset display style
             toggleStatus.textContent = 'ON';
             toggleStatus.classList.remove('off');
-            this.logActivity('🔧', 'SETTINGS', 'Quick Training enabled');
+            this.logActivity('🔧', 'SETTINGS', 'Quick Training enabled - button now visible');
         } else {
-            // Disable Quick Training
+            // Disable Quick Training - force hide the button
             quickTrainBtn.classList.add('hidden');
+            quickTrainBtn.style.display = 'none';  // Force hide
             toggleStatus.textContent = 'OFF';
             toggleStatus.classList.add('off');
-            this.logActivity('🔧', 'SETTINGS', 'Quick Training disabled');
+            this.logActivity('🔧', 'SETTINGS', 'Quick Training disabled - button hidden');
             
             // If Quick Train is currently active, stop it
             if (this.activeOperation === 'quickTrain') {
+                this.logActivity('⚠️', 'WARNING', 'Stopping active Quick Training due to toggle disable');
                 this.toggleQuickTrain(); // This will stop the current training
             }
         }
+        
+        // Force update button states
+        this.updateButtonStates();
     }
     
     updateButtonStates() {
@@ -254,19 +260,23 @@ class TetrisApp {
         buttons.forEach(({ element, operation }) => {
             if (!element) return;
             
-            // Special handling for Quick Train button - check toggle state
+            // Special handling for Quick Train button - check toggle state first
             if (operation === 'quickTrain') {
                 const toggleEnabled = this.elements.quickTrainingToggle?.checked;
                 if (!toggleEnabled) {
-                    // If toggle is off, keep the button hidden
+                    // If toggle is off, force hide the button
                     element.classList.add('hidden');
+                    element.style.display = 'none';
+                    element.disabled = true;
                     return;
                 } else {
                     // If toggle is on, make sure button is visible
                     element.classList.remove('hidden');
+                    element.style.display = '';
                 }
             }
             
+            // Handle enabled/disabled state based on active operations
             if (this.activeOperation === null) {
                 // No active operation - enable all buttons
                 element.disabled = false;
