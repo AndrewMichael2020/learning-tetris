@@ -1,5 +1,5 @@
 """
-Training CLI for Tetris RL agents.
+Training CLI for Tetris RL agents. -
 """
 import argparse
 import json
