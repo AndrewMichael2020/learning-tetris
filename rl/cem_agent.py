@@ -5,7 +5,7 @@ Uses population-based search over linear feature weights.
 import numpy as np
 from typing import Callable, Dict, List, Any, Optional
 from .tetris_env import TetrisEnv
-from .features import board_to_features
+from .features import board_to_features_ml
 from .afterstate import get_best_placement, execute_placement
 from .policy_store import save_policy
 

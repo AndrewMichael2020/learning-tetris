@@ -142,14 +142,15 @@ def score_afterstate(afterstate_board, **weights) -> float:
         Cost score (lower is better)
     """
     try:
-        # Try to use the full feature extraction if available
-        from .features import board_to_features, holes, max_height, bumpiness, aggregate_height
+        # Use deterministic-specific feature extraction
+        from .features import board_to_features_deterministic, holes, max_height, bumpiness, aggregate_height
         
-        features_array = board_to_features(afterstate_board)
+        features_array = board_to_features_deterministic(afterstate_board)
         
         # Extract key features for cost calculation
         if len(features_array) >= 17:  # Full feature vector
-            # Use indices from board_to_features: holes(10), agg_height(11), bumpiness(12), max_height(14)
+            # Use indices from board_to_features_deterministic: holes(10), agg_height(11), bumpiness(12), max_height(14)
+            # These are now POSITIVE values (penalties) as expected by deterministic algorithms
             holes_val = features_array[10] if len(features_array) > 10 else 0
             agg_height_val = features_array[11] if len(features_array) > 11 else 0
             bumpiness_val = features_array[12] if len(features_array) > 12 else 0

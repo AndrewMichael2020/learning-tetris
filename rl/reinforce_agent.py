@@ -5,8 +5,8 @@ Uses stochastic policy with softmax over linear feature preferences.
 import numpy as np
 from typing import Callable, Dict, List, Any, Optional, Tuple
 from .tetris_env import TetrisEnv
-from .features import board_to_features
-from .afterstate import enumerate_afterstates
+from .features import board_to_features_ml
+from .afterstate import enumerate_afterstates, execute_placement
 from .policy_store import save_policy
 
 
@@ -58,7 +58,7 @@ class REINFORCEPolicy:
         afterstate_info = []
         
         for afterstate_board, action_info in afterstates:
-            features = board_to_features(afterstate_board)
+            features = board_to_features_ml(afterstate_board)
             score = np.dot(self.weights, features) + action_info['reward']
             scores.append(score)
             afterstate_info.append(action_info)
@@ -106,7 +106,7 @@ def collect_episode(policy: REINFORCEPolicy, env: TetrisEnv, rng: np.random.Gene
     
     while not env.game_over and steps < max_steps:
         # Get state features (before action)
-        state_features = board_to_features(env.board)
+        state_features = board_to_features_ml(env.board)
         
         # Get action probabilities using afterstates
         afterstate_info, action_probs = policy.get_action_probabilities(env, rng)
@@ -417,7 +417,7 @@ async def train_with_progress(env_factory, episodes=1000, seed=42, out_path="pol
                              learning_rate=0.001, progress_callback=None):
     """Async version of train with progress callbacks and cancellation support."""
     import asyncio
-    from .features import board_to_features, reward_shaping
+    from .features import board_to_features_ml, reward_shaping
     from .afterstate import execute_placement
     from .policy_store import save_policy
     
@@ -458,7 +458,7 @@ async def train_with_progress(env_factory, episodes=1000, seed=42, out_path="pol
         
         while not env.game_over and steps < 200:  # Limit steps to avoid infinite loops
             # Get current state
-            state_features = board_to_features(env.board)
+            state_features = board_to_features_ml(env.board)
             
             # Get valid placements and their features
             valid_placements = []
@@ -470,7 +470,7 @@ async def train_with_progress(env_factory, episodes=1000, seed=42, out_path="pol
                         temp_env = env.copy()
                         success = execute_placement(temp_env, col, rotation)
                         if success:
-                            features = board_to_features(temp_env.board)
+                            features = board_to_features_ml(temp_env.board)
                             valid_placements.append((col, rotation))
                             placement_features.append(features)
                     except:

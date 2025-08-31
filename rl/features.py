@@ -145,19 +145,19 @@ def column_transitions(board: np.ndarray) -> int:
     return transitions
 
 
-def board_to_features(board: np.ndarray) -> np.ndarray:
+def board_to_features_ml(board: np.ndarray) -> np.ndarray:
     """
-    Convert board state to feature vector.
+    Convert board state to feature vector for ML algorithms (CEM, REINFORCE).
     
     Features (17 total):
     - Per-column heights (10) - always 10, padded with zeros for narrower boards
-    - Total holes (1)
-    - Aggregate height (1) 
-    - Bumpiness (1)
-    - Wells (1)
-    - Max height (1)
-    - Completed lines (1)
-    - Row transitions (1)
+    - Total holes (1) - NEGATIVE (penalty)
+    - Aggregate height (1) - NEGATIVE (penalty) 
+    - Bumpiness (1) - NEGATIVE (penalty)
+    - Wells (1) - NEGATIVE (penalty)
+    - Max height (1) - NEGATIVE (penalty)
+    - Completed lines (1) - POSITIVE (reward)
+    - Row transitions (1) - NEGATIVE (penalty)
     
     All features are normalized to reasonable ranges.
     """
@@ -173,7 +173,7 @@ def board_to_features(board: np.ndarray) -> np.ndarray:
         heights = heights[:10]
     features.extend(heights)
     
-    # Count-based features (make bad features negative for discrimination)
+    # Count-based features (make bad features negative for ML discrimination)
     board_area = height * width
     
     # Holes: direct penalty (negative feature)
@@ -200,11 +200,82 @@ def board_to_features(board: np.ndarray) -> np.ndarray:
     completed = completed_lines_potential(board)  # Keep positive
     features.append(completed)
     
-    # Row transitions: penalty for fragmentation
-    row_trans = -row_transitions(board) / (height * (width + 1))
-    features.append(row_trans)
+    # Row transitions: penalty for irregular patterns
+    transitions = -column_transitions(board) / width
+    features.append(transitions)
     
     return np.array(features, dtype=np.float32)
+
+
+def board_to_features_deterministic(board: np.ndarray) -> np.ndarray:
+    """
+    Convert board state to feature vector for deterministic algorithms 
+    (Greedy, Tabu, SA, ACO).
+    
+    Features (17 total):
+    - Per-column heights (10) - always 10, padded with zeros for narrower boards
+    - Total holes (1) - POSITIVE (penalty)
+    - Aggregate height (1) - POSITIVE (penalty) 
+    - Bumpiness (1) - POSITIVE (penalty)
+    - Wells (1) - POSITIVE (penalty)
+    - Max height (1) - POSITIVE (penalty)
+    - Completed lines (1) - NEGATIVE (reward, so cost is negative)
+    - Row transitions (1) - POSITIVE (penalty)
+    
+    All features are normalized to reasonable ranges for cost calculation.
+    """
+    height, width = board.shape
+    features = []
+    
+    # Per-column heights (always 10, padded with zeros for narrower boards)
+    heights = get_column_heights(board) / height
+    # Pad or truncate to exactly 10 columns
+    if width < 10:
+        heights = np.pad(heights, (0, 10 - width), mode='constant', constant_values=0)
+    elif width > 10:
+        heights = heights[:10]
+    features.extend(heights)
+    
+    # Count-based features (positive penalties for deterministic cost functions)
+    board_area = height * width
+    
+    # Holes: positive penalty for cost calculation
+    holes_count = holes(board) / 100.0  # Normalized positive penalty
+    features.append(holes_count)
+    
+    # Aggregate height: positive penalty
+    agg_height = aggregate_height(board) / (height * width * 100.0)
+    features.append(agg_height)
+    
+    # Bumpiness: positive penalty
+    bump = bumpiness(board) / 100.0  # Normalized positive penalty
+    features.append(bump)
+    
+    # Wells: positive penalty
+    wells_count = wells(board) / 100.0
+    features.append(wells_count)
+    
+    # Max height: positive penalty
+    max_h = max_height(board) / height
+    features.append(max_h)
+    
+    # Completed lines: negative cost (reward)
+    completed = -completed_lines_potential(board) / 10.0  # Negative for reward
+    features.append(completed)
+    
+    # Row transitions: positive penalty
+    transitions = column_transitions(board) / (width * 100.0)
+    features.append(transitions)
+    
+    return np.array(features, dtype=np.float32)
+
+
+def board_to_features(board: np.ndarray) -> np.ndarray:
+    """
+    Legacy function for backward compatibility.
+    Defaults to ML version for existing code.
+    """
+    return board_to_features_ml(board)
 
 
 def reward_shaping(prev_board: np.ndarray, next_board: np.ndarray) -> float:
